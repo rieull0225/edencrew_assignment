@@ -5,7 +5,19 @@ import '../../../../theme/app_assets.dart';
 import '../../../../theme/app_theme.dart';
 import '../../domain/services/search_text_utils.dart';
 import '../layout/search_layout_spec.dart';
+import 'search_action_bar.dart';
 
+/// 검색 결과 행 위젯.
+///
+/// Figma 스펙 구현:
+/// - 종목명 + 서브텍스트(종목코드, 시장) 2줄 구조
+/// - 검색어 하이라이트: 보라색(#B980FF)으로 매칭 텍스트 강조
+/// - 하트 버튼: 즐겨찾기 상태에 따라 빨간색/회색 전환
+/// - 선택 시 액션바 확장 (매수/매도/지우기 버튼)
+///
+/// 탭 영역:
+/// - 하트 아이콘은 20x20 슬롯이지만 터치 영역은 넓게 유지
+/// - GestureDetector + opaque behavior로 탭 감지
 class SearchResultRow extends StatelessWidget {
   const SearchResultRow({
     required this.item,
@@ -48,6 +60,8 @@ class SearchResultRow extends StatelessWidget {
                       child: _SearchTextColumn(item: item, query: query),
                     ),
                     const SizedBox(width: 12),
+                    // 하트 아이콘: Figma 스펙에 따라 20x20 slot 사용
+                    // 탭 영역을 넓히기 위해 GestureDetector로 감싸고 opaque 처리
                     GestureDetector(
                       key: Key('search-heart-${item.id}'),
                       onTap: onHeartTap,
@@ -55,11 +69,8 @@ class SearchResultRow extends StatelessWidget {
                       child: AppAssetSlotIcon(
                         key: Key('search-heart-icon-${item.id}'),
                         assetPath: AppAssets.favoriteHeart,
-                        // TODO(assignment): Match the exact Figma slot size.
-                        // This starter keeps the slot slightly oversized so
-                        // the related widget test can guide the fix.
-                        slotWidth: 24,
-                        slotHeight: 24,
+                        slotWidth: 20,
+                        slotHeight: 20,
                         assetWidth: AppAssetSizes.favoriteHeart.width,
                         assetHeight: AppAssetSizes.favoriteHeart.height,
                         color: item.isFavorite
@@ -77,24 +88,11 @@ class SearchResultRow extends StatelessWidget {
                 padding: EdgeInsets.symmetric(
                   horizontal: layout.horizontalPadding,
                 ),
-                child: Container(
+                child: KeyedSubtree(
                   key: Key('search-actions-${item.id}'),
-                  height: SearchLayoutSpec.expandedActionHeight,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.bg.bg_2_212121,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppColors.border.border_5_3b3e53),
-                  ),
-                  child: InkWell(
-                    onTap: () => onActionTap('TODO'),
-                    child: Center(
-                      child: Text(
-                        'TODO(assignment): SearchActionBar를 Figma 기준으로 재구성하세요.',
-                        style: AppTypography.searchMeta,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+                  child: SearchActionBar(
+                    layout: layout,
+                    onActionTap: onActionTap,
                   ),
                 ),
               ),
@@ -112,34 +110,42 @@ class _SearchTextColumn extends StatelessWidget {
   final StockSearchItem item;
   final String query;
 
+  static const _highlightColor = Color(0xFFB980FF);
+
+  List<TextSpan> _buildHighlightedSpans(String text, TextStyle baseStyle) {
+    final parts = splitSearchTextParts(text, query);
+    return parts.map((part) {
+      return TextSpan(
+        text: part.text,
+        style: part.isHighlighted
+            ? baseStyle.copyWith(color: _highlightColor)
+            : baseStyle,
+      );
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final hasQuery = query.trim().isNotEmpty;
-    // TODO(assignment): Rebuild this text block to match Figma.
-    // Expected shape:
-    // - title + subtitle as two RichText widgets
-    // - query highlight using splitSearchTextParts()
-    // - typography and ellipsis should match the design
+    final subtitle = buildSearchSubtitle(item);
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          item.name,
-          style: hasQuery
-              ? AppTypography.searchName.copyWith(
-                  decoration: TextDecoration.none,
-                )
-              : AppTypography.searchName,
+        RichText(
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          text: TextSpan(
+            children: _buildHighlightedSpans(item.name, AppTypography.searchName),
+          ),
         ),
         const SizedBox(height: 4),
-        Text(
-          buildSearchSubtitle(item),
-          style: AppTypography.searchMeta,
+        RichText(
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          text: TextSpan(
+            children: _buildHighlightedSpans(subtitle, AppTypography.searchMeta),
+          ),
         ),
       ],
     );

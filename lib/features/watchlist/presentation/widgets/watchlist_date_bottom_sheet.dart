@@ -5,6 +5,17 @@ import 'package:flutter/material.dart';
 import '../models/watchlist_date_picker_options.dart';
 import '../../../../theme/app_theme.dart';
 
+/// 날짜 선택 바텀시트.
+///
+/// Figma 스펙 구현:
+/// - 연/월/일 3개의 휠 피커
+/// - 선택 상태: 배경색 변경 + 폰트 스타일 변경
+/// - 취소/확인 버튼
+///
+/// 깜빡임 방지 구현:
+/// - 월/연 변경 시 일 목록이 바뀔 때 스크롤 컨트롤러 재생성
+/// - setState 전에 새 컨트롤러를 올바른 초기 위치로 설정
+/// - 이렇게 하면 잘못된 위치에서 애니메이션되는 깜빡임 현상 방지
 class WatchlistDateBottomSheet extends StatefulWidget {
   const WatchlistDateBottomSheet({
     required this.availableDates,
@@ -116,41 +127,80 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
     });
   }
 
+  /// 연도 선택 처리.
+  ///
+  /// 깜빡임 방지 구현:
+  /// - 연도 변경 시 월/일 목록이 모두 바뀔 수 있음
+  /// - 월 컨트롤러도 필요시 재생성
+  /// - 일 컨트롤러는 항상 재생성 (월이 바뀌면 일 목록도 바뀌므로)
+  /// - 모든 컨트롤러를 올바른 위치로 설정 후 setState
   void _selectYear(int index) {
     final year = _years[index];
     if (year == _selectedYear) {
       return;
     }
 
-    var shouldSyncMonth = false;
-    setState(() {
-      _selectedYear = year;
-      if (!_months.contains(_selectedMonth)) {
-        _selectedMonth = _months.first;
-        shouldSyncMonth = true;
-      }
-      if (!_days.contains(_selectedDay)) {
-        _selectedDay = _days.first;
-      }
-    });
+    // Update year first to get correct _months and _days lists
+    _selectedYear = year;
 
-    _scheduleWheelSync(syncMonth: shouldSyncMonth, syncDay: true);
+    // Check if month needs to change
+    final months = _months;
+    var shouldSyncMonth = false;
+    if (!months.contains(_selectedMonth)) {
+      _selectedMonth = months.first;
+      shouldSyncMonth = true;
+    }
+
+    // Check if day needs to change and recreate controller
+    final days = _days;
+    final newDay = days.contains(_selectedDay) ? _selectedDay : days.first;
+
+    // Recreate day controller with correct initial position
+    _dayController.dispose();
+    _dayController = FixedExtentScrollController(
+      initialItem: days.indexOf(newDay).clamp(0, days.length - 1),
+    );
+
+    // Recreate month controller if needed
+    if (shouldSyncMonth) {
+      _monthController.dispose();
+      _monthController = FixedExtentScrollController(
+        initialItem: months.indexOf(_selectedMonth).clamp(0, months.length - 1),
+      );
+    }
+
+    setState(() {
+      _selectedDay = newDay;
+    });
   }
 
+  /// 월 선택 처리.
+  ///
+  /// 깜빡임 방지 구현:
+  /// - 월 변경 시 일 목록이 바뀜 (ex: 31일 → 28일)
+  /// - 기존 일이 새 목록에 없으면 첫 번째 날로 변경
+  /// - 컨트롤러를 올바른 초기 위치로 재생성 후 setState
+  /// - 이 순서로 해야 화면에 잘못된 위치가 잠깐 보이지 않음
   void _selectMonth(int index) {
     final month = _months[index];
     if (month == _selectedMonth) {
       return;
     }
 
-    setState(() {
-      _selectedMonth = month;
-      if (!_days.contains(_selectedDay)) {
-        _selectedDay = _days.first;
-      }
-    });
+    // Update month first to get correct _days list
+    _selectedMonth = month;
+    final days = _days;
+    final newDay = days.contains(_selectedDay) ? _selectedDay : days.first;
 
-    _scheduleWheelSync(syncDay: true);
+    // Recreate day controller with correct initial position to avoid flicker
+    _dayController.dispose();
+    _dayController = FixedExtentScrollController(
+      initialItem: days.indexOf(newDay).clamp(0, days.length - 1),
+    );
+
+    setState(() {
+      _selectedDay = newDay;
+    });
   }
 
   void _selectDay(int index) {
@@ -197,14 +247,13 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
     Navigator.of(context).pop();
   }
 
+  // 날짜 선택 바텀시트 구현:
+  // - 헤더: "날짜 선택" 타이틀
+  // - 연/월/일 picker: ListWheelScrollView 기반 _DateWheelPicker 사용
+  // - 선택 상태: 배경색 변경 + 폰트 스타일 변경
+  // - CTA: 취소/확인 버튼
   @override
   Widget build(BuildContext context) {
-    // TODO(assignment): Rebuild the date bottom sheet body to match Figma.
-    // Suggested scope:
-    // - header
-    // - year / month / day picker area
-    // - selected state styling
-    // - cancel / confirm CTA row
     return SafeArea(
       top: false,
       child: Align(
@@ -230,13 +279,42 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
               ),
               SizedBox(
                 height: _pickerHeight,
-                child: Center(
-                  child: Text(
-                    'TODO(assignment): WatchlistDateBottomSheet body를 재구성하세요.',
-                    key: const Key('watchlist-date-placeholder'),
-                    style: AppTypography.searchMeta,
-                    textAlign: TextAlign.center,
-                  ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _DateWheelPicker(
+                        pickerKey: const Key('watchlist-date-picker-year'),
+                        itemKeyPrefix: 'watchlist-date-item-year',
+                        controller: _yearController,
+                        values: _years,
+                        selectedValue: _selectedYear,
+                        formatter: (value) => '$value년',
+                        onSelectedItemChanged: _selectYear,
+                      ),
+                    ),
+                    Expanded(
+                      child: _DateWheelPicker(
+                        pickerKey: const Key('watchlist-date-picker-month'),
+                        itemKeyPrefix: 'watchlist-date-item-month',
+                        controller: _monthController,
+                        values: _months,
+                        selectedValue: _selectedMonth,
+                        formatter: (value) => '$value월',
+                        onSelectedItemChanged: _selectMonth,
+                      ),
+                    ),
+                    Expanded(
+                      child: _DateWheelPicker(
+                        pickerKey: const Key('watchlist-date-picker-day'),
+                        itemKeyPrefix: 'watchlist-date-item-day',
+                        controller: _dayController,
+                        values: _days,
+                        selectedValue: _selectedDay,
+                        formatter: (value) => '$value일',
+                        onSelectedItemChanged: _selectDay,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 32),
