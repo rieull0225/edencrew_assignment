@@ -334,7 +334,7 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
                     Expanded(
                       child: _SheetButton(
                         buttonKey: const Key('watchlist-date-confirm'),
-                        label: '매수',
+                        label: '확인',
                         backgroundColor: AppColors.mainAndAccent.primary_ff8a00,
                         onTap: _confirm,
                       ),
