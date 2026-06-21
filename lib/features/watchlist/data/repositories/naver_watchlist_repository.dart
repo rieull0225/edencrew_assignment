@@ -54,12 +54,20 @@ class NaverWatchlistRepository implements WatchlistRepository {
   /// 너무 크면 rate limiting, 너무 작으면 느림. 10이 적절.
   final int parallelBatchSize;
 
+  /// 초기 로딩 시 가져올 페이지 수.
+  /// 2페이지 = ~20거래일 (약 1개월), 빠른 앱 시작을 위해.
+  static const int _initialLoadPages = 2;
+
   final Map<String, NaverChartMetadataDto> _metadataCache = {};
   final Map<String, NaverDailyHistoryPageDto> _dailyHistoryPageCache = {};
   final Map<String, _RealtimeQuoteCacheEntry> _realtimeQuoteCache = {};
 
   Set<String>? _favoriteIdsCache;
   List<DateTime>? _availableDatesCache;
+  int _lastLoadedPage = 0;
+  int _totalPages = 0;
+  String? _referenceSymbol;
+  bool _isBackgroundLoading = false;
 
   /// 관심종목 스냅샷 조회.
   ///
@@ -171,82 +179,129 @@ class NaverWatchlistRepository implements WatchlistRepository {
 
   /// 거래 가능한 날짜 목록 조회 (내림차순 - 최신순).
   ///
-  /// 로딩 전략: 로컬 캐시 우선 + 병렬 전체 로딩
+  /// 로딩 전략: lazy load + 백그라운드 프리페치
   ///
-  /// 1. 메모리 캐시 확인 → 있으면 즉시 반환
-  /// 2. 로컬 캐시(SharedPreferences) 확인 → 당일 유효하면 즉시 반환
-  /// 3. 캐시 없으면 전체 페이지 병렬 로딩 (10개씩 배치)
-  ///    - 750페이지 / 10배치 = 75번 × 0.3초 ≈ 22초 (순차 대비 10배 빠름)
-  /// 4. 로딩 완료 후 로컬 캐시 저장 (다음 실행 시 즉시 로딩)
+  /// 1. 메모리/로컬 캐시 확인 → 즉시 반환
+  /// 2. 초기 로딩: 2페이지만 (~20거래일, 약 1개월) → 빠른 앱 시작 (~1초)
+  /// 3. 백그라운드: 나머지 페이지 병렬 로딩 (UI 블로킹 없음)
+  /// 4. 전체 로딩 완료 후 로컬 캐시 저장
   ///
   /// 왜 이렇게 구현했는가:
-  /// - 금융앱에서 전체 거래일 접근은 필수 (과거 차트, 분석 등)
-  /// - 첫 실행만 오래 걸리고, 이후는 캐시로 즉시 로딩
-  /// - 페이지네이션은 UX가 어색함 (날짜 피커에 "더 보기"?)
+  /// - 초기 로딩 ~1초 (vs 전체 로딩 ~20초)
+  /// - 금융앱에서 대부분 최근 날짜 사용 (최근 1개월 내)
+  /// - 과거 데이터는 백그라운드에서 점진적 로딩
   @override
   Future<List<DateTime>> fetchAvailableDates() async {
-    // 1. 메모리 캐시 확인
-    if (_availableDatesCache != null) {
+    // 1. 메모리 캐시 확인 (전체 로딩 완료 시)
+    if (_availableDatesCache != null && _lastLoadedPage >= _totalPages && _totalPages > 0) {
       return _availableDatesCache!;
     }
 
-    // 2. 로컬 캐시 확인 (당일 유효)
+    // 2. 로컬 캐시 확인 (당일 유효, 전체 데이터)
     final cachedDates = _offlineCache?.loadAvailableDates();
     if (cachedDates != null && _offlineCache!.isAvailableDatesCacheValid()) {
       _availableDatesCache = cachedDates;
+      _lastLoadedPage = 999; // 전체 로딩 완료 표시
+      _totalPages = 999;
       return cachedDates;
     }
 
     // 3. 참조할 종목 선택 (첫 번째 즐겨찾기)
-    final favoriteIds = await loadFavoriteIds();
-    String? referenceSymbol;
-    for (final id in favoriteIds) {
-      final symbol = domesticSymbolFromFavoriteId(id);
-      if (symbol != null) {
-        referenceSymbol = symbol;
-        break;
-      }
-    }
-
-    if (referenceSymbol == null) {
-      _availableDatesCache = [];
-      return [];
-    }
-
-    // 4. 첫 페이지 로딩 → 전체 페이지 수 확인
-    final firstPage = await _loadDailyHistoryPage(referenceSymbol, 1);
-    final totalPages = firstPage.lastPage;
-
-    final allDates = <DateTime>{};
-    for (final row in firstPage.priceInfos) {
-      allDates.add(normalizeAsOfDate(row.localDate));
-    }
-
-    // 5. 나머지 페이지 병렬 로딩 (배치 단위)
-    for (var batchStart = 2; batchStart <= totalPages; batchStart += parallelBatchSize) {
-      final batchEnd = (batchStart + parallelBatchSize - 1).clamp(1, totalPages);
-
-      final batch = <Future<NaverDailyHistoryPageDto>>[];
-      for (var page = batchStart; page <= batchEnd; page++) {
-        batch.add(_loadDailyHistoryPage(referenceSymbol, page));
-      }
-
-      final results = await Future.wait(batch);
-      for (final pageDto in results) {
-        for (final row in pageDto.priceInfos) {
-          allDates.add(normalizeAsOfDate(row.localDate));
+    if (_referenceSymbol == null) {
+      final favoriteIds = await loadFavoriteIds();
+      for (final id in favoriteIds) {
+        final symbol = domesticSymbolFromFavoriteId(id);
+        if (symbol != null) {
+          _referenceSymbol = symbol;
+          break;
         }
       }
     }
 
-    // 6. 정렬 및 캐시 저장
-    final sortedDates = allDates.toList()..sort((a, b) => b.compareTo(a));
-    _availableDatesCache = sortedDates;
+    if (_referenceSymbol == null) {
+      _availableDatesCache = [];
+      return [];
+    }
 
-    // 로컬 캐시에 저장 (다음 앱 실행 시 즉시 로딩)
-    _offlineCache?.saveAvailableDates(sortedDates);
+    // 4. 초기 로딩: 첫 2페이지만 (빠른 앱 시작)
+    if (_lastLoadedPage == 0) {
+      final allDates = <DateTime>{};
 
-    return sortedDates;
+      final firstPage = await _loadDailyHistoryPage(_referenceSymbol!, 1);
+      _totalPages = firstPage.lastPage;
+      _lastLoadedPage = 1;
+
+      for (final row in firstPage.priceInfos) {
+        allDates.add(normalizeAsOfDate(row.localDate));
+      }
+
+      // 2페이지까지 초기 로딩 (~20거래일)
+      final initialEnd = _initialLoadPages.clamp(1, _totalPages);
+      for (var page = 2; page <= initialEnd; page++) {
+        final pageDto = await _loadDailyHistoryPage(_referenceSymbol!, page);
+        for (final row in pageDto.priceInfos) {
+          allDates.add(normalizeAsOfDate(row.localDate));
+        }
+        _lastLoadedPage = page;
+      }
+
+      final sortedDates = allDates.toList()..sort((a, b) => b.compareTo(a));
+      _availableDatesCache = sortedDates;
+
+      // 5. 백그라운드에서 나머지 페이지 프리페치 시작 (UI 블로킹 없음)
+      _startBackgroundLoading();
+
+      return sortedDates;
+    }
+
+    // 이미 초기 로딩 완료, 현재 캐시 반환 (백그라운드 로딩 진행 중)
+    return _availableDatesCache ?? [];
+  }
+
+  /// 백그라운드에서 나머지 거래일 페이지 로딩.
+  /// UI를 블로킹하지 않고 점진적으로 캐시 업데이트.
+  void _startBackgroundLoading() {
+    if (_isBackgroundLoading || _lastLoadedPage >= _totalPages) return;
+    _isBackgroundLoading = true;
+
+    // 비동기로 실행 (await 하지 않음 - fire and forget)
+    _loadRemainingPagesInBackground();
+  }
+
+  Future<void> _loadRemainingPagesInBackground() async {
+    try {
+      final allDates = <DateTime>{...?_availableDatesCache};
+
+      for (var batchStart = _lastLoadedPage + 1;
+           batchStart <= _totalPages;
+           batchStart += parallelBatchSize) {
+        final batchEnd = (batchStart + parallelBatchSize - 1).clamp(1, _totalPages);
+
+        final batch = <Future<NaverDailyHistoryPageDto>>[];
+        for (var page = batchStart; page <= batchEnd; page++) {
+          batch.add(_loadDailyHistoryPage(_referenceSymbol!, page));
+        }
+
+        final results = await Future.wait(batch);
+        for (final pageDto in results) {
+          for (final row in pageDto.priceInfos) {
+            allDates.add(normalizeAsOfDate(row.localDate));
+          }
+        }
+        _lastLoadedPage = batchEnd;
+
+        // 배치마다 캐시 업데이트 (점진적 반영)
+        final sortedDates = allDates.toList()..sort((a, b) => b.compareTo(a));
+        _availableDatesCache = sortedDates;
+      }
+
+      // 전체 로딩 완료 후 로컬 캐시 저장 (다음 실행 시 즉시 로딩)
+      if (_availableDatesCache != null) {
+        _offlineCache?.saveAvailableDates(_availableDatesCache!);
+      }
+    } finally {
+      _isBackgroundLoading = false;
+    }
   }
 
   @override
