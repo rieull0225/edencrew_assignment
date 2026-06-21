@@ -35,10 +35,10 @@ class SearchToast extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: 16 * layout.horizontalScale),
           decoration: BoxDecoration(
             // Figma: rgba(37,37,37,0.7)
-            color: const Color(0xB3252525),
+            color: AppDerivedColors.searchToastBackground,
             borderRadius: BorderRadius.circular(16),
             // Figma: rgba(185,128,255,0.2) - 보라색 강조 테두리
-            border: Border.all(color: const Color(0x33B980FF)),
+            border: Border.all(color: AppDerivedColors.searchToastBorder),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x40000000),

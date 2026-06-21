@@ -110,7 +110,7 @@ class _SearchTextColumn extends StatelessWidget {
   final StockSearchItem item;
   final String query;
 
-  static const _highlightColor = Color(0xFFB980FF);
+  static final _highlightColor = AppColors.mainAndAccent.point_b980ff;
 
   List<TextSpan> _buildHighlightedSpans(String text, TextStyle baseStyle) {
     final parts = splitSearchTextParts(text, query);
