@@ -364,34 +364,33 @@ final isFresh = cached != null &&
 - 10초 이내 재요청 시 캐시 사용
 - 금융앱에서 너무 잦은 API 호출 방지
 
-### 4.5 거래일 로딩: 로컬 캐시 + 병렬 로딩
+### 4.5 거래일 로딩: Lazy Load + 백그라운드 프리페치
 
 ```dart
-// 첫 실행: 전체 페이지 병렬 로딩 (10개씩 배치)
-// 750페이지 / 10배치 = 75번 × 0.3초 ≈ 22초 (순차 대비 10배 빠름)
-for (var batchStart = 2; batchStart <= totalPages; batchStart += parallelBatchSize) {
-  final batch = <Future<NaverDailyHistoryPageDto>>[];
-  for (var page = batchStart; page <= batchEnd; page++) {
-    batch.add(_loadDailyHistoryPage(symbol, page));
-  }
-  await Future.wait(batch);
+// 1. 초기 로딩: 2페이지만 (~20거래일, 약 1개월)
+// → 빠른 앱 시작 (~1초)
+final initialEnd = _initialLoadPages.clamp(1, _totalPages); // = 2
+for (var page = 1; page <= initialEnd; page++) {
+  final pageDto = await _loadDailyHistoryPage(symbol, page);
+  // dates 수집...
 }
+return sortedDates;  // 즉시 반환, UI 표시
 
-// 로딩 완료 후 로컬 캐시 저장
-_offlineCache?.saveAvailableDates(sortedDates);
+// 2. 백그라운드에서 나머지 페이지 로딩 (UI 블로킹 없음)
+_startBackgroundLoading();  // fire and forget
 
-// 이후 실행: 캐시에서 즉시 로딩
-final cachedDates = _offlineCache?.loadAvailableDates();
-if (cachedDates != null && _offlineCache!.isAvailableDatesCacheValid()) {
-  return cachedDates;  // 즉시 반환
+void _startBackgroundLoading() {
+  // 10페이지씩 배치로 병렬 로딩
+  // 캐시에 점진적 업데이트
+  // 완료 후 로컬 캐시 저장
 }
 ```
 
 **왜 이렇게 구현했는가**:
-- 금융앱에서 전체 거래일 접근은 필수 (과거 차트, 분석 등)
-- 페이지네이션은 날짜 피커 UX에 어울리지 않음 ("더 보기" 버튼?)
-- 첫 실행만 ~22초, 이후는 캐시로 즉시 로딩
-- 병렬 배치 요청으로 순차 대비 10배 빠름
+- 초기 로딩 ~1초 (vs 전체 로딩 ~20초) - 20배 빠른 앱 시작
+- 금융앱에서 대부분 최근 날짜 사용 (최근 1개월 내)
+- 과거 데이터는 백그라운드에서 점진적 로딩
+- 전체 로딩 완료 후 로컬 캐시 저장 → 다음 실행 시 즉시 로딩
 
 ### 4.6 이미지 캐싱
 
@@ -555,7 +554,7 @@ final html = latin1.decode(response.data);
 
 ---
 
-### 5.4 성능 문제 발견 및 해결: 병렬 로딩 + 로컬 캐시
+### 5.4 성능 문제 발견 및 해결: Lazy Load + 백그라운드 프리페치
 
 #### 증상
 
@@ -580,68 +579,95 @@ Fetching page 3...
 |------|------|------|------|
 | 순차 전체 로딩 | 단순 | 3-4분 소요 (750 × 0.3초) | ❌ |
 | 페이지네이션 | 빠른 시작 | 금융앱에 부적합한 UX | ❌ |
-| 병렬 로딩 + 캐시 | 첫 실행 ~22초, 이후 즉시 | 구현 복잡 | ✅ |
+| 병렬 전체 로딩 + 캐시 | 이후 즉시 | 첫 실행 ~22초 대기 | ❌ |
+| **Lazy Load + 프리페치** | **~1초 시작**, 이후 즉시 | 구현 복잡 | ✅ |
 
 **왜 페이지네이션을 버렸는가?**
 - 금융앱에서 전체 거래일 접근은 필수 (과거 차트 분석, 특정 날짜 검색)
 - 날짜 피커에서 "더 보기" 버튼은 어색한 UX
 - 사용자는 과거 데이터가 **항상 있을 것**으로 기대함
 
-**결정**: 병렬 배치 로딩 + 로컬 캐시 방식 채택
+**왜 병렬 전체 로딩도 버렸는가?**
+- 22초 대기는 여전히 너무 김
+- 사용자 90%는 최근 1개월 날짜만 사용
+- 과거 데이터는 "백그라운드에서 준비"해도 충분
 
-#### 병렬 배치 로딩 구현
+**결정**: Lazy Load + 백그라운드 프리페치 방식 채택
+
+#### Lazy Load 구현
 
 ```dart
 // 성능 비교
 // 순차 로딩: 750 × 0.3초 = 225초 (3분 45초) ❌
-// 병렬 로딩: 750 ÷ 10 × 0.3초 = 22.5초 ✅ (10배 빠름)
+// 병렬 전체 로딩: 750 ÷ 10 × 0.3초 = 22.5초 ❌ (여전히 느림)
+// Lazy Load: 2 × 0.3초 = ~1초 ✅ (즉시 앱 사용 가능)
+
+static const int _initialLoadPages = 2;  // ~20거래일 (약 1개월)
 
 Future<List<DateTime>> fetchAvailableDates() async {
-  // 1. 첫 페이지 로딩 → 전체 페이지 수 확인
-  final firstPage = await _loadDailyHistoryPage(symbol, 1);
-  final totalPages = firstPage.lastPage;
-
-  // 2. 나머지 페이지 병렬 로딩 (10개씩 배치)
-  for (var batchStart = 2; batchStart <= totalPages; batchStart += 10) {
-    final batch = <Future<NaverDailyHistoryPageDto>>[];
-    for (var page = batchStart; page <= batchEnd; page++) {
-      batch.add(_loadDailyHistoryPage(symbol, page));
-    }
-    final results = await Future.wait(batch);
-    // 결과 병합...
+  // 1. 로컬 캐시 확인 (당일 캐시가 있으면 즉시 반환)
+  final cachedDates = _offlineCache?.loadAvailableDates();
+  if (cachedDates != null && _offlineCache!.isAvailableDatesCacheValid()) {
+    return cachedDates;  // 즉시 반환 (API 호출 없음)
   }
 
-  // 3. 로컬 캐시 저장
-  _offlineCache?.saveAvailableDates(sortedDates);
-  return sortedDates;
+  // 2. 초기 로딩: 2페이지만 (~1초)
+  final firstPage = await _loadDailyHistoryPage(symbol, 1);
+  _totalPages = firstPage.lastPage;
+
+  for (var page = 1; page <= _initialLoadPages; page++) {
+    final pageDto = await _loadDailyHistoryPage(symbol, page);
+    // dates 수집...
+  }
+  _lastLoadedPage = _initialLoadPages;
+
+  // 3. 백그라운드에서 나머지 로딩 (UI 블로킹 없음)
+  _startBackgroundLoading();  // fire and forget
+
+  return sortedDates;  // 즉시 반환, UI 표시
 }
 ```
 
-#### 로컬 캐시 전략
+#### 백그라운드 프리페치
 
 ```dart
-// 앱 시작 시 캐시 확인
-final cachedDates = _offlineCache?.loadAvailableDates();
-if (cachedDates != null && _offlineCache!.isAvailableDatesCacheValid()) {
-  return cachedDates;  // 즉시 반환 (API 호출 없음)
+void _startBackgroundLoading() {
+  if (_isBackgroundLoading || _lastLoadedPage >= _totalPages) return;
+  _isBackgroundLoading = true;
+  _loadRemainingPagesInBackground();  // unawaited
 }
 
-// 캐시 유효성: 당일 캐시만 유효
-bool isAvailableDatesCacheValid() {
-  final cacheTime = getAvailableDatesCacheTimestamp();
-  final now = DateTime.now();
-  return cacheTime?.year == now.year &&
-         cacheTime?.month == now.month &&
-         cacheTime?.day == now.day;
+Future<void> _loadRemainingPagesInBackground() async {
+  try {
+    // 10페이지씩 배치로 병렬 로딩
+    for (var batchStart = _lastLoadedPage + 1;
+         batchStart <= _totalPages;
+         batchStart += 10) {
+      final batch = <Future<NaverDailyHistoryPageDto>>[];
+      for (var page = batchStart; page <= batchEnd; page++) {
+        batch.add(_loadDailyHistoryPage(symbol, page));
+      }
+      final results = await Future.wait(batch);
+
+      // 캐시에 점진적 업데이트
+      _availableDatesCache = [..._availableDatesCache!, ...newDates]..sort();
+    }
+
+    // 완료 후 로컬 캐시 저장
+    _offlineCache?.saveAvailableDates(_availableDatesCache!);
+  } finally {
+    _isBackgroundLoading = false;
+  }
 }
 ```
 
 #### 왜 이 방식인가?
 
-1. **첫 실행 ~22초**: 병렬 배치로 순차 대비 10배 빠름
-2. **이후 실행 즉시**: 로컬 캐시에서 바로 반환
-3. **완전한 데이터**: 전체 거래일에 즉시 접근 가능
-4. **금융앱에 적합한 UX**: "더 보기" 없이 모든 날짜 탐색 가능
+1. **첫 실행 ~1초**: 2페이지만 로딩 후 즉시 UI 표시
+2. **백그라운드 로딩**: 나머지 750페이지는 UI와 병렬로 진행
+3. **이후 실행 즉시**: 로컬 캐시에서 바로 반환
+4. **점진적 데이터**: 백그라운드 로딩 중에도 최근 날짜는 사용 가능
+5. **금융앱에 적합한 UX**: 대부분 최근 날짜 사용, 과거는 백그라운드 준비
 
 #### 캐시 무효화 정책
 
