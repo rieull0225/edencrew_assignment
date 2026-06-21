@@ -2,6 +2,15 @@
 
 import '../../domain/services/watchlist_sorting.dart';
 
+/// 검색 자동완성 결과 DTO.
+///
+/// 파싱 규칙:
+/// - 모든 필드를 문자열로 안전하게 파싱 (_readString)
+/// - isDomesticStock: 국내 주식만 필터링하기 위한 조건
+///   - category == 'stock': 주식만
+///   - nationCode == 'KOR': 한국만
+///   - code가 6자리 숫자: 국내 종목코드 형식
+///   - url에 '/domestic/stock/' 포함: 국내 주식 URL 패턴
 class NaverAutocompleteItemDto {
   const NaverAutocompleteItemDto({
     required this.code,
@@ -14,19 +23,14 @@ class NaverAutocompleteItemDto {
   });
 
   factory NaverAutocompleteItemDto.fromJson(Map<String, dynamic> json) {
-    // TODO(assignment): Read the autocomplete fields from json and create the
-    // DTO. See README.md for the expected Naver endpoint and sample payload.
-    //
-    // Required fields:
-    // - code
-    // - name
-    // - typeCode
-    // - typeName
-    // - url
-    // - nationCode
-    // - category
-    throw UnimplementedError(
-      'TODO(assignment): implement NaverAutocompleteItemDto.fromJson',
+    return NaverAutocompleteItemDto(
+      code: _readString(json['code']),
+      name: _readString(json['name']),
+      typeCode: _readString(json['typeCode']),
+      typeName: _readString(json['typeName']),
+      url: _readString(json['url']),
+      nationCode: _readString(json['nationCode']),
+      category: _readString(json['category']),
     );
   }
 
@@ -38,6 +42,8 @@ class NaverAutocompleteItemDto {
   final String nationCode;
   final String category;
 
+  /// 국내 6자리 주식 종목인지 판별.
+  /// 과제 요구사항: 국내 주식만 필터링, 6자리 종목코드만 통과.
   bool get isDomesticStock =>
       category == 'stock' &&
       nationCode == 'KOR' &&
@@ -45,6 +51,12 @@ class NaverAutocompleteItemDto {
       url.contains('/domestic/stock/');
 }
 
+/// 실시간 시세 DTO.
+///
+/// 파싱 규칙:
+/// - API 응답 필드명이 축약형(cd, nv, pcv 등)이므로 의미있는 이름으로 매핑
+/// - 숫자는 num 타입이면 직접 변환, 문자열이면 콤마 제거 후 파싱
+/// - countOfListedStock은 nullable이므로 기본값 0 사용
 class NaverRealtimeQuoteDto {
   const NaverRealtimeQuoteDto({
     required this.symbol,
@@ -58,19 +70,15 @@ class NaverRealtimeQuoteDto {
   });
 
   factory NaverRealtimeQuoteDto.fromJson(Map<String, dynamic> json) {
-    // TODO(assignment): Map the realtime quote payload into this DTO.
-    //
-    // Naver keys used by the solution:
-    // - cd: symbol
-    // - nv: current price
-    // - pcv: previous close
-    // - ov: open price
-    // - hv: high price
-    // - lv: low price
-    // - aq: accumulated trading volume
-    // - countOfListedStock: listed share count (optional)
-    throw UnimplementedError(
-      'TODO(assignment): implement NaverRealtimeQuoteDto.fromJson',
+    return NaverRealtimeQuoteDto(
+      symbol: _readString(json['cd']),
+      currentPrice: _readDouble(json['nv']),
+      previousClose: _readDouble(json['pcv']),
+      openPrice: _readDouble(json['ov']),
+      highPrice: _readDouble(json['hv']),
+      lowPrice: _readDouble(json['lv']),
+      accumulatedTradingVolume: _readInt(json['aq']),
+      countOfListedStock: _readNullableInt(json['countOfListedStock']) ?? 0,
     );
   }
 
@@ -85,6 +93,7 @@ class NaverRealtimeQuoteDto {
 
   double get changeAmount => currentPrice - previousClose;
 
+  /// 등락률 계산. 소수점 2자리까지.
   double get changeRate {
     if (previousClose == 0) {
       return 0;
@@ -97,6 +106,7 @@ class NaverRealtimeQuoteDto {
   }
 }
 
+/// 종목 메타데이터 DTO.
 class NaverChartMetadataDto {
   const NaverChartMetadataDto({
     required this.symbol,
@@ -105,9 +115,10 @@ class NaverChartMetadataDto {
   });
 
   factory NaverChartMetadataDto.fromJson(Map<String, dynamic> json) {
-    // TODO(assignment): Map the chart metadata payload into this DTO.
-    throw UnimplementedError(
-      'TODO(assignment): implement NaverChartMetadataDto.fromJson',
+    return NaverChartMetadataDto(
+      symbol: _readString(json['symbolCode']),
+      stockName: _readString(json['stockName']),
+      stockExchangeNameKor: _readString(json['stockExchangeNameKor']),
     );
   }
 
@@ -116,6 +127,11 @@ class NaverChartMetadataDto {
   final String stockExchangeNameKor;
 }
 
+/// 일별 시세 DTO.
+///
+/// 파싱 규칙:
+/// - localDate는 'yyyyMMdd' 형식 문자열을 DateTime으로 변환
+/// - normalizeAsOfDate로 시간 정보 제거하여 날짜 비교 용이하게 함
 class NaverHistoricalPriceDto {
   const NaverHistoricalPriceDto({
     required this.localDate,
@@ -127,9 +143,13 @@ class NaverHistoricalPriceDto {
   });
 
   factory NaverHistoricalPriceDto.fromJson(Map<String, dynamic> json) {
-    // TODO(assignment): Parse one historical OHLCV row.
-    throw UnimplementedError(
-      'TODO(assignment): implement NaverHistoricalPriceDto.fromJson',
+    return NaverHistoricalPriceDto(
+      localDate: _readLocalDate(json['localDate']),
+      closePrice: _readDouble(json['closePrice']),
+      openPrice: _readDouble(json['openPrice']),
+      highPrice: _readDouble(json['highPrice']),
+      lowPrice: _readDouble(json['lowPrice']),
+      accumulatedTradingVolume: _readInt(json['accumulatedTradingVolume']),
     );
   }
 
@@ -149,10 +169,13 @@ class NaverHistoricalChartDto {
   });
 
   factory NaverHistoricalChartDto.fromJson(Map<String, dynamic> json) {
-    // TODO(assignment): Parse the chart wrapper and convert each priceInfos
-    // entry with NaverHistoricalPriceDto.fromJson.
-    throw UnimplementedError(
-      'TODO(assignment): implement NaverHistoricalChartDto.fromJson',
+    final priceInfosList = json['priceInfos'] as List<dynamic>? ?? [];
+    return NaverHistoricalChartDto(
+      symbol: _readString(json['code']),
+      periodType: _readString(json['periodType']),
+      priceInfos: priceInfosList
+          .map((e) => NaverHistoricalPriceDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -161,6 +184,8 @@ class NaverHistoricalChartDto {
   final List<NaverHistoricalPriceDto> priceInfos;
 }
 
+/// 일별 시세 페이지 DTO.
+/// HTML 파싱 결과를 담음.
 class NaverDailyHistoryPageDto {
   const NaverDailyHistoryPageDto({
     required this.symbol,
@@ -175,6 +200,7 @@ class NaverDailyHistoryPageDto {
   final List<NaverHistoricalPriceDto> priceInfos;
 }
 
+/// yyyyMMdd 형식 문자열을 DateTime으로 파싱.
 DateTime _readLocalDate(Object? value) {
   final text = _readString(value);
   if (text.length != 8) {
@@ -190,6 +216,7 @@ DateTime _readLocalDate(Object? value) {
   );
 }
 
+/// null이나 빈 문자열이면 예외 발생.
 String _readString(Object? value) {
   final text = value?.toString().trim();
   if (text == null || text.isEmpty) {
@@ -198,6 +225,7 @@ String _readString(Object? value) {
   return text;
 }
 
+/// 숫자 파싱. num이면 직접 변환, 문자열이면 콤마 제거 후 파싱.
 double _readDouble(Object? value) {
   if (value is num) {
     return value.toDouble();
@@ -205,6 +233,7 @@ double _readDouble(Object? value) {
   return double.parse(_readString(value).replaceAll(',', ''));
 }
 
+/// 정수 파싱. 콤마 구분자 지원.
 int _readInt(Object? value) {
   if (value is int) {
     return value;
