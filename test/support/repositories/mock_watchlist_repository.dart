@@ -401,6 +401,16 @@ class MockWatchlistRepository implements WatchlistRepository {
     return <DateTime>[latestSnapshot.asOf];
   }
 
+  /// Mock은 페이지네이션이 필요 없으므로 항상 false 반환.
+  @override
+  bool get hasMoreDates => false;
+
+  /// Mock은 페이지네이션이 필요 없으므로 기존 날짜 목록 반환.
+  @override
+  Future<List<DateTime>> loadMoreDates() async {
+    return fetchAvailableDates();
+  }
+
   @override
   Future<WatchlistDetail> fetchWatchlistDetail({
     required String symbol,

@@ -5,6 +5,12 @@ abstract interface class WatchlistRepository {
 
   Future<List<DateTime>> fetchAvailableDates();
 
+  /// 추가 거래일 로딩 (페이지네이션).
+  Future<List<DateTime>> loadMoreDates();
+
+  /// 추가 로딩 가능 여부.
+  bool get hasMoreDates;
+
   Future<WatchlistDetail> fetchWatchlistDetail({
     required String symbol,
     required MarketType market,

@@ -160,4 +160,10 @@ class _SearchControllerAssignmentRepository implements WatchlistRepository {
       ),
     ];
   }
+
+  @override
+  bool get hasMoreDates => false;
+
+  @override
+  Future<List<DateTime>> loadMoreDates() async => const <DateTime>[];
 }

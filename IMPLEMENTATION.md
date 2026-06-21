@@ -364,19 +364,26 @@ final isFresh = cached != null &&
 - 10초 이내 재요청 시 캐시 사용
 - 금융앱에서 너무 잦은 API 호출 방지
 
-### 4.2 거래일 페이지 로딩 제한
+### 4.2 거래일 페이지네이션
 
 ```dart
-// 전체 페이지(750+) 로딩 시 무한 대기 문제 방지
-final maxPages = 10;  // ~100거래일, 약 5개월치
-final lastPage = firstPage.lastPage.clamp(1, maxPages);
+// 초기 로딩: 2페이지만 (약 20거래일, 1개월치)
+const initialPages = 2;
+
+// 추가 로딩 시: 4페이지씩 배치 로딩
+Future<List<DateTime>> loadMoreDates() async {
+  if (!hasMoreDates) return cachedDates;
+  // 병렬 배치 요청으로 빠르게 추가 로딩
+}
+
+bool get hasMoreDates => _lastLoadedPage < _totalPages;
 ```
 
 **왜 이렇게 구현했는가**:
 - 네이버 일별 시세는 전체 750+ 페이지
-- 모두 로딩하면 앱 시작이 수 분 소요
-- 사용자가 5개월 이전 날짜를 선택할 일은 거의 없음
-- 빠른 초기 로딩이 더 중요한 UX
+- 초기 2페이지만 로딩하여 앱 시작 1초 이내
+- 사용자가 오래된 날짜 필요 시 `loadMoreDates()`로 추가 로딩
+- 페이지네이션으로 UX와 완전성 모두 확보
 
 ### 4.3 이미지 캐싱
 
@@ -556,7 +563,7 @@ final html = latin1.decode(response.data);
 
 ---
 
-### 5.4 성능 문제 발견 및 해결
+### 5.4 성능 문제 발견 및 해결: 페이지네이션 도입
 
 #### 증상
 
@@ -577,18 +584,67 @@ Fetching page 3...
 
 #### 해결 방안 검토
 
-1. **전체 로딩**: 사용자가 앱 시작까지 2-3분 대기 → ❌ UX 최악
-2. **Lazy loading**: 스크롤 시 추가 로딩 → 구현 복잡, 날짜 피커와 맞지 않음
-3. **페이지 제한**: 최근 N페이지만 로딩 → ✅ 단순하고 효과적
+| 방안 | 장점 | 단점 | 선택 |
+|------|------|------|------|
+| 전체 로딩 | 완전한 데이터 | 시작 불가 (2-3분) | ❌ |
+| 페이지 제한 (10페이지) | 단순 | 5개월 이후 데이터 접근 불가 | ❌ |
+| 페이지네이션 | 빠른 시작 + 필요시 확장 | 구현 약간 복잡 | ✅ |
 
-**결정**: 10페이지(약 100거래일, 5개월)로 제한
+**결정**: 페이지네이션 방식 채택
+
+#### 페이지네이션 구현
 
 ```dart
-final maxPages = 10;
-final lastPage = firstPage.lastPage.clamp(1, maxPages);
+// 초기 로딩: 2페이지만 (약 1개월치, 빠른 앱 시작)
+const initialPages = 2;
+
+Future<List<DateTime>> fetchAvailableDates() async {
+  final firstPage = await _loadDailyHistoryPage(symbol, 1);
+  _totalPages = firstPage.lastPage;  // 전체 페이지 수 저장
+  _lastLoadedPage = 1;
+
+  // 2페이지까지만 초기 로딩
+  if (_totalPages >= 2) {
+    await _loadDailyHistoryPage(symbol, 2);
+    _lastLoadedPage = 2;
+  }
+
+  return sortedDates;
+}
+
+// 추가 로딩: 필요할 때 4페이지씩 배치 로딩
+Future<List<DateTime>> loadMoreDates() async {
+  if (!hasMoreDates) return cachedDates;
+
+  // 4페이지씩 병렬 로딩 (약 40거래일, 2개월치)
+  final batch = <Future>[];
+  for (var page = _lastLoadedPage + 1; page <= endPage; page++) {
+    batch.add(_loadDailyHistoryPage(symbol, page));
+  }
+  await Future.wait(batch);
+
+  return updatedDates;
+}
+
+bool get hasMoreDates => _lastLoadedPage < _totalPages;
 ```
 
-**왜 10페이지?**: 금융앱에서 사용자가 5개월 이전 데이터를 조회하는 경우는 드물다. 빠른 앱 시작이 더 중요하다.
+#### 왜 이 방식인가?
+
+1. **빠른 초기 로딩**: 2페이지(~20거래일)만 로딩하면 1초 이내 앱 시작
+2. **무제한 확장**: 사용자가 원하면 `loadMoreDates()`로 과거 데이터 접근 가능
+3. **효율적 배치**: 4페이지씩 병렬 로딩으로 추가 로딩도 빠름
+4. **캐시 활용**: 이미 로딩한 페이지는 다시 요청하지 않음
+
+#### 날짜 피커와의 연동
+
+```dart
+// 날짜 피커에서 오래된 날짜 영역 스크롤 시
+if (selectedDate older than loadedDates && hasMoreDates) {
+  await repository.loadMoreDates();
+  // 피커 업데이트
+}
+```
 
 ---
 

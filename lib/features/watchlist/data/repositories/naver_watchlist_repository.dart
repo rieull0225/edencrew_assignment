@@ -22,7 +22,7 @@ import 'favorite_ids_local_store.dart';
 ///
 /// 성능 고려사항 (금융앱):
 /// - realtimeCacheTtl: 실시간 시세 캐시 유효 시간 (기본 10초)
-/// - 일별 시세 페이지 로딩을 10페이지로 제한 (무한 로딩 방지)
+/// - 페이지네이션: 초기 2페이지만 로딩, 이후 필요시 추가 로딩
 /// - 병렬 배치 요청으로 여러 페이지 동시 로딩
 ///
 /// 안정성 (금융앱):
@@ -166,17 +166,27 @@ class NaverWatchlistRepository implements WatchlistRepository {
     );
   }
 
+  /// 현재 로딩된 마지막 페이지 번호 (페이지네이션용).
+  int _lastLoadedPage = 0;
+
+  /// 전체 페이지 수 (첫 로딩 시 설정).
+  int _totalPages = 0;
+
+  /// 추가 페이지가 있는지 여부.
+  @override
+  bool get hasMoreDates => _lastLoadedPage < _totalPages;
+
   /// 거래 가능한 날짜 목록 조회 (내림차순 - 최신순).
   ///
-  /// 성능 최적화:
+  /// 페이지네이션 구현:
+  /// - 초기 로딩: 2페이지만 로딩 (~20거래일, 약 1개월치)
+  /// - 추가 로딩: loadMoreDates() 호출 시 4페이지씩 추가 로딩
   /// - 메모리 캐시 사용으로 중복 호출 방지
-  /// - 최대 10페이지만 로딩 (~100거래일, 약 5개월치)
-  /// - 전체 페이지(750+) 로딩 시 무한 대기 문제 방지
-  /// - 병렬 배치 요청으로 페이지 로딩 속도 향상
   ///
   /// 이렇게 구현한 이유:
-  /// - 사용자가 5개월 이전 날짜를 선택할 일은 거의 없음
-  /// - 앱 시작 시 빠른 로딩이 더 중요한 UX
+  /// - 앱 시작 시 빠른 로딩이 중요 (초기 2페이지만)
+  /// - 사용자가 더 오래된 날짜를 원하면 그때 추가 로딩
+  /// - 전체 750+ 페이지를 한번에 로딩하는 것은 비효율적
   @override
   Future<List<DateTime>> fetchAvailableDates() async {
     // Return cached dates if available
@@ -202,29 +212,74 @@ class NaverWatchlistRepository implements WatchlistRepository {
 
     // Request page 1 to discover lastPage
     final firstPage = await _loadDailyHistoryPage(referenceSymbol, 1);
-    final allDates = <DateTime>{};
+    _totalPages = firstPage.lastPage;
+    _lastLoadedPage = 1;
 
+    final allDates = <DateTime>{};
     for (final row in firstPage.priceInfos) {
       allDates.add(normalizeAsOfDate(row.localDate));
     }
 
-    // Fetch only first few pages (10 pages = ~100 trading days is plenty)
-    // Don't fetch all 750+ pages - that takes forever
-    final maxPages = 10;
-    final lastPage = firstPage.lastPage.clamp(1, maxPages);
-    for (var page = 2; page <= lastPage; page += dailyHistoryFetchBatchSize) {
-      final batch = <Future<NaverDailyHistoryPageDto>>[];
-      for (var p = page; p < page + dailyHistoryFetchBatchSize && p <= lastPage; p++) {
-        batch.add(_loadDailyHistoryPage(referenceSymbol, p));
-      }
-
-      final results = await Future.wait(batch);
-      for (final pageDto in results) {
-        for (final row in pageDto.priceInfos) {
-          allDates.add(normalizeAsOfDate(row.localDate));
-        }
+    // 초기 로딩: 2페이지까지만 (약 1개월치)
+    // 추가 날짜가 필요하면 loadMoreDates()로 페이지네이션
+    const initialPages = 2;
+    if (_totalPages >= initialPages) {
+      final secondPage = await _loadDailyHistoryPage(referenceSymbol, 2);
+      _lastLoadedPage = 2;
+      for (final row in secondPage.priceInfos) {
+        allDates.add(normalizeAsOfDate(row.localDate));
       }
     }
+
+    // Sort descending (most recent first)
+    final sortedDates = allDates.toList()..sort((a, b) => b.compareTo(a));
+    _availableDatesCache = sortedDates;
+    return sortedDates;
+  }
+
+  /// 추가 거래일 로딩 (페이지네이션).
+  ///
+  /// 4페이지씩 배치로 추가 로딩하여 약 40거래일(2개월)씩 확장.
+  /// hasMoreDates가 false면 더 이상 로딩할 데이터 없음.
+  @override
+  Future<List<DateTime>> loadMoreDates() async {
+    if (!hasMoreDates) {
+      return _availableDatesCache ?? [];
+    }
+
+    // Pick reference symbol
+    final favoriteIds = await loadFavoriteIds();
+    String? referenceSymbol;
+    for (final id in favoriteIds) {
+      final symbol = domesticSymbolFromFavoriteId(id);
+      if (symbol != null) {
+        referenceSymbol = symbol;
+        break;
+      }
+    }
+
+    if (referenceSymbol == null) {
+      return _availableDatesCache ?? [];
+    }
+
+    final allDates = <DateTime>{...?_availableDatesCache};
+    final startPage = _lastLoadedPage + 1;
+    final endPage = (_lastLoadedPage + dailyHistoryFetchBatchSize).clamp(1, _totalPages);
+
+    // 배치로 병렬 로딩
+    final batch = <Future<NaverDailyHistoryPageDto>>[];
+    for (var page = startPage; page <= endPage; page++) {
+      batch.add(_loadDailyHistoryPage(referenceSymbol, page));
+    }
+
+    final results = await Future.wait(batch);
+    for (final pageDto in results) {
+      for (final row in pageDto.priceInfos) {
+        allDates.add(normalizeAsOfDate(row.localDate));
+      }
+    }
+
+    _lastLoadedPage = endPage;
 
     // Sort descending (most recent first)
     final sortedDates = allDates.toList()..sort((a, b) => b.compareTo(a));
