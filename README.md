@@ -221,7 +221,7 @@ GET https://stock.naver.com/api/securityFe/api/fchart/domestic/stock/{symbol}
 
 - 이름과 거래소명을 search/watchlist UI 모델에 연결합니다.
 
-### 4. 일별 시세 HTML
+### 4. 일별 시세 HTML 
 
 무엇을 가져오나:
 
