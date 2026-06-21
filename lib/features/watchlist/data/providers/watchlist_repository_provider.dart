@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/repositories/watchlist_repository.dart';
 import '../repositories/favorite_ids_local_store.dart';
 import '../repositories/naver_watchlist_repository.dart';
+import '../services/watchlist_offline_cache.dart';
 
 final naverDioProvider = Provider<Dio>((ref) {
   return Dio(
@@ -23,6 +24,14 @@ final favoriteIdsLocalStoreProvider = Provider<FavoriteIdsLocalStore>((ref) {
   return FavoriteIdsLocalStore(ref.watch(sharedPreferencesProvider));
 });
 
+/// 오프라인 캐시 Provider.
+/// SharedPreferences를 사용해 마지막 성공 데이터 저장.
+final watchlistOfflineCacheProvider = Provider<WatchlistOfflineCache?>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
+  if (prefs == null) return null;
+  return WatchlistOfflineCache(prefs);
+});
+
 final watchlistRepositoryProvider = Provider<WatchlistRepository>((ref) {
   if (kIsWeb) {
     throw UnsupportedError(
@@ -33,5 +42,6 @@ final watchlistRepositoryProvider = Provider<WatchlistRepository>((ref) {
   return NaverWatchlistRepository(
     dio: ref.watch(naverDioProvider),
     favoriteIdsLocalStore: ref.watch(favoriteIdsLocalStoreProvider),
+    offlineCache: ref.watch(watchlistOfflineCacheProvider),
   );
 });
