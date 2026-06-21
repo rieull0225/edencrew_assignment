@@ -80,12 +80,4 @@ class DemoWatchlistRepository implements WatchlistRepository {
   Future<List<StockSearchItem>> searchStocks({required String query}) {
     return _delegate.searchStocks(query: query);
   }
-
-  @override
-  bool get hasMoreDates => _delegate.hasMoreDates;
-
-  @override
-  Future<List<DateTime>> loadMoreDates() {
-    return _delegate.loadMoreDates();
-  }
 }

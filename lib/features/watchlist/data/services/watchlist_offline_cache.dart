@@ -8,6 +8,8 @@ import '../../domain/services/watchlist_sorting.dart';
 /// 오프라인 캐시 키.
 const _watchlistCacheKey = 'watchlist_offline_cache';
 const _cacheTsKey = 'watchlist_cache_timestamp';
+const _availableDatesCacheKey = 'available_dates_cache';
+const _availableDatesTsKey = 'available_dates_timestamp';
 
 /// 관심종목 오프라인 캐시 서비스.
 ///
@@ -73,6 +75,68 @@ class WatchlistOfflineCache {
 
     await prefs.remove(_watchlistCacheKey);
     await prefs.remove(_cacheTsKey);
+    await prefs.remove(_availableDatesCacheKey);
+    await prefs.remove(_availableDatesTsKey);
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 거래일 목록 캐시
+  // ─────────────────────────────────────────────────────────────────
+
+  /// 거래일 목록 캐시 저장.
+  Future<void> saveAvailableDates(List<DateTime> dates) async {
+    final prefs = _sharedPreferences;
+    if (prefs == null) return;
+
+    try {
+      final jsonList = dates.map(formatApiDate).toList();
+      await prefs.setString(_availableDatesCacheKey, jsonEncode(jsonList));
+      await prefs.setInt(
+        _availableDatesTsKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      // 캐시 저장 실패는 무시
+    }
+  }
+
+  /// 거래일 목록 캐시 로드.
+  List<DateTime>? loadAvailableDates() {
+    final prefs = _sharedPreferences;
+    if (prefs == null) return null;
+
+    try {
+      final jsonString = prefs.getString(_availableDatesCacheKey);
+      if (jsonString == null) return null;
+
+      final jsonList = jsonDecode(jsonString) as List<dynamic>;
+      return jsonList.map((e) => _parseDate(e as String)).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 거래일 캐시 타임스탬프 조회.
+  DateTime? getAvailableDatesCacheTimestamp() {
+    final prefs = _sharedPreferences;
+    if (prefs == null) return null;
+
+    final ts = prefs.getInt(_availableDatesTsKey);
+    if (ts == null) return null;
+
+    return DateTime.fromMillisecondsSinceEpoch(ts);
+  }
+
+  /// 거래일 캐시가 유효한지 (오늘 이미 로딩했는지) 확인.
+  bool isAvailableDatesCacheValid() {
+    final cacheTime = getAvailableDatesCacheTimestamp();
+    if (cacheTime == null) return false;
+
+    final now = DateTime.now();
+    // 같은 날이면 유효 (당일 중 거래일이 바뀌진 않음)
+    return cacheTime.year == now.year &&
+        cacheTime.month == now.month &&
+        cacheTime.day == now.day;
   }
 
   /// WatchlistSnapshot → JSON 직렬화.

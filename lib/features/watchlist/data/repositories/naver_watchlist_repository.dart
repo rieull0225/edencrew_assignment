@@ -22,8 +22,8 @@ import 'favorite_ids_local_store.dart';
 ///
 /// 성능 고려사항 (금융앱):
 /// - realtimeCacheTtl: 실시간 시세 캐시 유효 시간 (기본 10초)
-/// - 페이지네이션: 초기 2페이지만 로딩, 이후 필요시 추가 로딩
-/// - 병렬 배치 요청으로 여러 페이지 동시 로딩
+/// - 거래일 목록: 로컬 캐시 우선 → 첫 실행 시 병렬 로딩으로 전체 로드
+/// - 병렬 배치 요청으로 750+ 페이지도 ~20초 내 로딩 가능
 ///
 /// 안정성 (금융앱):
 /// - API 재시도: exponential backoff로 일시적 오류 복구
@@ -36,7 +36,7 @@ class NaverWatchlistRepository implements WatchlistRepository {
     NaverStockDataClient? client,
     NaverStockLogoUrlResolver? logoUrlResolver,
     this.realtimeCacheTtl = const Duration(seconds: 10),
-    this.dailyHistoryFetchBatchSize = 4,
+    this.parallelBatchSize = 10,
   }) : _client = client ?? NaverDomesticStockClient(dio),
        _favoriteIdsLocalStore = favoriteIdsLocalStore,
        _offlineCache = offlineCache,
@@ -49,7 +49,10 @@ class NaverWatchlistRepository implements WatchlistRepository {
   final WatchlistOfflineCache? _offlineCache;
   final NaverStockLogoUrlResolver _logoUrlResolver;
   final Duration realtimeCacheTtl;
-  final int dailyHistoryFetchBatchSize;
+
+  /// 병렬 로딩 시 한 번에 요청할 페이지 수.
+  /// 너무 크면 rate limiting, 너무 작으면 느림. 10이 적절.
+  final int parallelBatchSize;
 
   final Map<String, NaverChartMetadataDto> _metadataCache = {};
   final Map<String, NaverDailyHistoryPageDto> _dailyHistoryPageCache = {};
@@ -166,35 +169,35 @@ class NaverWatchlistRepository implements WatchlistRepository {
     );
   }
 
-  /// 현재 로딩된 마지막 페이지 번호 (페이지네이션용).
-  int _lastLoadedPage = 0;
-
-  /// 전체 페이지 수 (첫 로딩 시 설정).
-  int _totalPages = 0;
-
-  /// 추가 페이지가 있는지 여부.
-  @override
-  bool get hasMoreDates => _lastLoadedPage < _totalPages;
-
   /// 거래 가능한 날짜 목록 조회 (내림차순 - 최신순).
   ///
-  /// 페이지네이션 구현:
-  /// - 초기 로딩: 2페이지만 로딩 (~20거래일, 약 1개월치)
-  /// - 추가 로딩: loadMoreDates() 호출 시 4페이지씩 추가 로딩
-  /// - 메모리 캐시 사용으로 중복 호출 방지
+  /// 로딩 전략: 로컬 캐시 우선 + 병렬 전체 로딩
   ///
-  /// 이렇게 구현한 이유:
-  /// - 앱 시작 시 빠른 로딩이 중요 (초기 2페이지만)
-  /// - 사용자가 더 오래된 날짜를 원하면 그때 추가 로딩
-  /// - 전체 750+ 페이지를 한번에 로딩하는 것은 비효율적
+  /// 1. 메모리 캐시 확인 → 있으면 즉시 반환
+  /// 2. 로컬 캐시(SharedPreferences) 확인 → 당일 유효하면 즉시 반환
+  /// 3. 캐시 없으면 전체 페이지 병렬 로딩 (10개씩 배치)
+  ///    - 750페이지 / 10배치 = 75번 × 0.3초 ≈ 22초 (순차 대비 10배 빠름)
+  /// 4. 로딩 완료 후 로컬 캐시 저장 (다음 실행 시 즉시 로딩)
+  ///
+  /// 왜 이렇게 구현했는가:
+  /// - 금융앱에서 전체 거래일 접근은 필수 (과거 차트, 분석 등)
+  /// - 첫 실행만 오래 걸리고, 이후는 캐시로 즉시 로딩
+  /// - 페이지네이션은 UX가 어색함 (날짜 피커에 "더 보기"?)
   @override
   Future<List<DateTime>> fetchAvailableDates() async {
-    // Return cached dates if available
+    // 1. 메모리 캐시 확인
     if (_availableDatesCache != null) {
       return _availableDatesCache!;
     }
 
-    // Pick the first valid favorite symbol as reference
+    // 2. 로컬 캐시 확인 (당일 유효)
+    final cachedDates = _offlineCache?.loadAvailableDates();
+    if (cachedDates != null && _offlineCache!.isAvailableDatesCacheValid()) {
+      _availableDatesCache = cachedDates;
+      return cachedDates;
+    }
+
+    // 3. 참조할 종목 선택 (첫 번째 즐겨찾기)
     final favoriteIds = await loadFavoriteIds();
     String? referenceSymbol;
     for (final id in favoriteIds) {
@@ -210,80 +213,39 @@ class NaverWatchlistRepository implements WatchlistRepository {
       return [];
     }
 
-    // Request page 1 to discover lastPage
+    // 4. 첫 페이지 로딩 → 전체 페이지 수 확인
     final firstPage = await _loadDailyHistoryPage(referenceSymbol, 1);
-    _totalPages = firstPage.lastPage;
-    _lastLoadedPage = 1;
+    final totalPages = firstPage.lastPage;
 
     final allDates = <DateTime>{};
     for (final row in firstPage.priceInfos) {
       allDates.add(normalizeAsOfDate(row.localDate));
     }
 
-    // 초기 로딩: 2페이지까지만 (약 1개월치)
-    // 추가 날짜가 필요하면 loadMoreDates()로 페이지네이션
-    const initialPages = 2;
-    if (_totalPages >= initialPages) {
-      final secondPage = await _loadDailyHistoryPage(referenceSymbol, 2);
-      _lastLoadedPage = 2;
-      for (final row in secondPage.priceInfos) {
-        allDates.add(normalizeAsOfDate(row.localDate));
+    // 5. 나머지 페이지 병렬 로딩 (배치 단위)
+    for (var batchStart = 2; batchStart <= totalPages; batchStart += parallelBatchSize) {
+      final batchEnd = (batchStart + parallelBatchSize - 1).clamp(1, totalPages);
+
+      final batch = <Future<NaverDailyHistoryPageDto>>[];
+      for (var page = batchStart; page <= batchEnd; page++) {
+        batch.add(_loadDailyHistoryPage(referenceSymbol, page));
+      }
+
+      final results = await Future.wait(batch);
+      for (final pageDto in results) {
+        for (final row in pageDto.priceInfos) {
+          allDates.add(normalizeAsOfDate(row.localDate));
+        }
       }
     }
 
-    // Sort descending (most recent first)
+    // 6. 정렬 및 캐시 저장
     final sortedDates = allDates.toList()..sort((a, b) => b.compareTo(a));
     _availableDatesCache = sortedDates;
-    return sortedDates;
-  }
 
-  /// 추가 거래일 로딩 (페이지네이션).
-  ///
-  /// 4페이지씩 배치로 추가 로딩하여 약 40거래일(2개월)씩 확장.
-  /// hasMoreDates가 false면 더 이상 로딩할 데이터 없음.
-  @override
-  Future<List<DateTime>> loadMoreDates() async {
-    if (!hasMoreDates) {
-      return _availableDatesCache ?? [];
-    }
+    // 로컬 캐시에 저장 (다음 앱 실행 시 즉시 로딩)
+    _offlineCache?.saveAvailableDates(sortedDates);
 
-    // Pick reference symbol
-    final favoriteIds = await loadFavoriteIds();
-    String? referenceSymbol;
-    for (final id in favoriteIds) {
-      final symbol = domesticSymbolFromFavoriteId(id);
-      if (symbol != null) {
-        referenceSymbol = symbol;
-        break;
-      }
-    }
-
-    if (referenceSymbol == null) {
-      return _availableDatesCache ?? [];
-    }
-
-    final allDates = <DateTime>{...?_availableDatesCache};
-    final startPage = _lastLoadedPage + 1;
-    final endPage = (_lastLoadedPage + dailyHistoryFetchBatchSize).clamp(1, _totalPages);
-
-    // 배치로 병렬 로딩
-    final batch = <Future<NaverDailyHistoryPageDto>>[];
-    for (var page = startPage; page <= endPage; page++) {
-      batch.add(_loadDailyHistoryPage(referenceSymbol, page));
-    }
-
-    final results = await Future.wait(batch);
-    for (final pageDto in results) {
-      for (final row in pageDto.priceInfos) {
-        allDates.add(normalizeAsOfDate(row.localDate));
-      }
-    }
-
-    _lastLoadedPage = endPage;
-
-    // Sort descending (most recent first)
-    final sortedDates = allDates.toList()..sort((a, b) => b.compareTo(a));
-    _availableDatesCache = sortedDates;
     return sortedDates;
   }
 

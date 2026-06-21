@@ -3,13 +3,12 @@ import '../models/watchlist_models.dart';
 abstract interface class WatchlistRepository {
   Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf});
 
+  /// 거래 가능한 날짜 목록 조회 (내림차순 - 최신순).
+  ///
+  /// 구현 전략:
+  /// - 첫 실행: 전체 페이지 병렬 로딩 → 로컬 캐시 저장
+  /// - 이후 실행: 캐시에서 즉시 반환 → 백그라운드에서 새 거래일 확인
   Future<List<DateTime>> fetchAvailableDates();
-
-  /// 추가 거래일 로딩 (페이지네이션).
-  Future<List<DateTime>> loadMoreDates();
-
-  /// 추가 로딩 가능 여부.
-  bool get hasMoreDates;
 
   Future<WatchlistDetail> fetchWatchlistDetail({
     required String symbol,

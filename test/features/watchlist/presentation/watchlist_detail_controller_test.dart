@@ -129,10 +129,4 @@ class CountingWatchlistRepository implements WatchlistRepository {
       ],
     );
   }
-
-  @override
-  bool get hasMoreDates => false;
-
-  @override
-  Future<List<DateTime>> loadMoreDates() async => snapshot.availableDates;
 }

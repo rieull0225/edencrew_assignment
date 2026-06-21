@@ -153,12 +153,6 @@ class SequenceWatchlistRepository implements WatchlistRepository {
         : _details.length - 1;
     return _details[index];
   }
-
-  @override
-  bool get hasMoreDates => false;
-
-  @override
-  Future<List<DateTime>> loadMoreDates() async => fetchAvailableDates();
 }
 
 class DateAwareWatchlistRepository implements WatchlistRepository {
@@ -213,12 +207,6 @@ class DateAwareWatchlistRepository implements WatchlistRepository {
   }) async {
     return _details[asOf ?? DateTime(2024, 2, 15)]!;
   }
-
-  @override
-  bool get hasMoreDates => false;
-
-  @override
-  Future<List<DateTime>> loadMoreDates() async => fetchAvailableDates();
 }
 
 class DetailRetryRepository implements WatchlistRepository {
@@ -264,12 +252,6 @@ class DetailRetryRepository implements WatchlistRepository {
     }
     return buildDetail(tradeVolume: 4705556, volumeRatio: 48.71);
   }
-
-  @override
-  bool get hasMoreDates => false;
-
-  @override
-  Future<List<DateTime>> loadMoreDates() async => fetchAvailableDates();
 }
 
 class SearchFavoriteFlowRepository implements WatchlistRepository {
@@ -372,12 +354,6 @@ class SearchFavoriteFlowRepository implements WatchlistRepository {
   Future<void> removeFavorite({required String itemId}) async {
     _favoriteIds.remove(itemId);
   }
-
-  @override
-  bool get hasMoreDates => false;
-
-  @override
-  Future<List<DateTime>> loadMoreDates() async => fetchAvailableDates();
 }
 
 WatchlistSnapshot buildSnapshot(double applePrice, DateTime asOf) {
