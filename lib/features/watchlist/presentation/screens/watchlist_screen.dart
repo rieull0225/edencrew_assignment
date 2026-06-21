@@ -31,10 +31,22 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   List<DateTime>? _availableDatesCache;
   Future<List<DateTime>>? _availableDatesFuture;
 
+  /// 백그라운드 진입 시간 (생명주기 관리용).
+  DateTime? _pausedAt;
+
+  /// 금융앱: 백그라운드에서 30초 이상 경과 시에만 새로고침.
+  /// 짧은 앱 전환(알림 확인 등)에서는 불필요한 API 호출 방지.
+  static const _staleThreshold = Duration(seconds: 30);
+
   @override
   void initState() {
     super.initState();
-    _appLifecycleListener = AppLifecycleListener(onResume: _handleResume);
+    _appLifecycleListener = AppLifecycleListener(
+      onResume: _handleResume,
+      onPause: _handlePause,
+      onHide: _handlePause,
+      onInactive: _handlePause,
+    );
   }
 
   @override
@@ -43,8 +55,24 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     super.dispose();
   }
 
+  void _handlePause() {
+    _pausedAt = DateTime.now();
+  }
+
   void _handleResume() {
-    unawaited(_refresh());
+    final pausedAt = _pausedAt;
+    _pausedAt = null;
+
+    // 백그라운드에서 staleThreshold 이상 경과했을 때만 새로고침
+    if (pausedAt == null) {
+      // 처음 앱 시작 시에는 새로고침 안 함 (이미 로딩됨)
+      return;
+    }
+
+    final elapsed = DateTime.now().difference(pausedAt);
+    if (elapsed >= _staleThreshold) {
+      unawaited(_refresh());
+    }
   }
 
   Future<void> _refresh() async {
@@ -127,8 +155,10 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
       return;
     }
 
-    // TODO(assignment): Apply the selected trading day to the watchlist
-    // controller and refresh the selected detail so list/detail stay in sync.
+    // Apply the selected trading day to the watchlist controller
+    await ref.read(watchlistControllerProvider.notifier).setAsOf(normalizedDate);
+    // Refresh the selected detail so list/detail stay in sync
+    await _syncSelectedDetailWithSnapshot();
   }
 
   Future<void> _handleActionTap(WatchlistItem item, String action) async {
