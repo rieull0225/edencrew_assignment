@@ -74,6 +74,7 @@ class WatchlistExpandedRow extends StatelessWidget {
             item: item,
             detailState: detailState,
             layout: layout,
+            onHeaderTap: onHeaderTap,
             onRetry: onRetry,
             onActionTap: onActionTap,
           ),
@@ -224,6 +225,7 @@ class _ExpandedBody extends StatelessWidget {
     required this.item,
     required this.detailState,
     required this.layout,
+    required this.onHeaderTap,
     required this.onRetry,
     required this.onActionTap,
   });
@@ -231,6 +233,7 @@ class _ExpandedBody extends StatelessWidget {
   final WatchlistItem item;
   final AsyncValue<WatchlistDetail>? detailState;
   final WatchlistLayoutSpec layout;
+  final VoidCallback onHeaderTap;
   final VoidCallback onRetry;
   final ValueChanged<String> onActionTap;
 
@@ -260,6 +263,9 @@ class _ExpandedBody extends StatelessWidget {
     }
 
     if (error || detail == null) {
+      // 데이터 없는 종목 (상장 전 등) vs 일반 오류 구분
+      final isNoData = !item.hasData;
+
       return _BodyFrame(
         layout: layout,
         child: Container(
@@ -274,7 +280,7 @@ class _ExpandedBody extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                '세부 정보를 불러오지 못했습니다.',
+                isNoData ? '세부 정보가 없습니다.' : '세부 정보를 불러오지 못했습니다.',
                 style: TextStyle(
                   fontFamily: AppFonts.pretendard,
                   color: AppColors.text.text_fafafa,
@@ -284,7 +290,7 @@ class _ExpandedBody extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '잠시 후 다시 시도해 주세요.',
+                isNoData ? '해당 날짜의 거래 데이터가 없습니다.' : '잠시 후 다시 시도해 주세요.',
                 style: TextStyle(
                   fontFamily: AppFonts.pretendard,
                   color: AppColors.text.text_2_bdbdbd,
@@ -294,11 +300,13 @@ class _ExpandedBody extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               TextButton(
-                key: Key('watchlist-detail-retry-${item.id}'),
-                onPressed: onRetry,
-                child: const Text(
-                  '다시 시도',
-                  style: TextStyle(fontFamily: AppFonts.pretendard),
+                key: Key(isNoData
+                    ? 'watchlist-detail-close-${item.id}'
+                    : 'watchlist-detail-retry-${item.id}'),
+                onPressed: isNoData ? onHeaderTap : onRetry,
+                child: Text(
+                  isNoData ? '닫기' : '다시 시도',
+                  style: const TextStyle(fontFamily: AppFonts.pretendard),
                 ),
               ),
             ],
