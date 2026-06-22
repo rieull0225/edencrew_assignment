@@ -205,7 +205,7 @@ GET https://polling.finance.naver.com/api/realtime
 
 - 종목명, 거래소명 같은 기본 정보를 조회합니다. 
  
-요청:
+요청: 
 
 ```text
 GET https://stock.naver.com/api/securityFe/api/fchart/domestic/stock/{symbol}

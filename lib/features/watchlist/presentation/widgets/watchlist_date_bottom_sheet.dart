@@ -190,6 +190,9 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
     setState(() {
       _selectedDay = newDay;
     });
+
+    // 다음 프레임에서 스크롤 위치 확실히 맞추기
+    _scheduleWheelSync(syncMonth: shouldSyncMonth, syncDay: true);
   }
 
   /// 월 선택 처리.
@@ -222,6 +225,9 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
     setState(() {
       _selectedDay = newDay;
     });
+
+    // 다음 프레임에서 스크롤 위치 확실히 맞추기
+    _scheduleWheelSync(syncDay: true);
   }
 
   void _selectDay(int index) {
