@@ -41,7 +41,7 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   /// 페이지네이션 단위.
   ///
   /// 20개 선택 이유:
-  /// - 일반적인 모바일 화면에서 스크롤 없이 5~7개 표시
+  /// - 일반적인 모바일 화면에서 스크롤 없이 12~15개 표시
   /// - 20개면 2~3번 스크롤로 전체 확인 가능 (적당한 청크)
   /// - 너무 적으면 빈번한 로딩, 너무 많으면 초기 로딩 지연
   static const _pageSize = 20;

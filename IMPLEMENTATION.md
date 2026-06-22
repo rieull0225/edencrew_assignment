@@ -6,6 +6,12 @@
 
 1. [데이터 연동](#1-데이터-연동)
 2. [UI 구현](#2-ui-구현)
+   - 2.1 검색 결과 행
+   - 2.2 검색 토스트
+   - 2.3 날짜 선택 바텀시트
+   - 2.4 관심종목 리스트 페이지네이션
+   - 2.5 데이터 없음 상태 처리
+   - 2.6 검색-관심종목 실시간 동기화
 3. [상태 동기화](#3-상태-동기화)
 4. [성능 최적화 (금융앱 고려사항)](#4-성능-최적화-금융앱-고려사항)
 5. [문제 해결 과정](#5-문제-해결-과정)
@@ -202,6 +208,153 @@ void _selectMonth(int index) {
 - 기존 컨트롤러는 이전 목록 기준 위치를 가지고 있음
 - jumpToItem으로 위치 변경 시 잠깐 잘못된 위치가 보임 (깜빡임)
 - 컨트롤러를 올바른 초기 위치로 재생성하면 깜빡임 없음
+
+### 2.4 관심종목 리스트 페이지네이션
+
+**파일**: `lib/features/watchlist/presentation/screens/watchlist_screen.dart`
+
+#### 무한 스크롤 방식 선택
+
+| 방식 | 장점 | 단점 | 선택 |
+|------|------|------|------|
+| 페이지 번호 버튼 | 특정 페이지 직접 접근 | 금융앱에 어색한 UX | ❌ |
+| "더 보기" 버튼 | 명시적 사용자 액션 | 매번 탭 필요, 흐름 끊김 | ❌ |
+| **무한 스크롤** | 끊김 없는 탐색, 빠른 스캔 | 위치 기억 어려움 | ✅ |
+
+**결정 이유**: 금융앱에서 종목 리스트는 빠르게 훑어보는 패턴이 많음. 무한 스크롤이 가장 자연스러운 UX.
+
+#### 페이지 크기: 20개
+
+```dart
+static const _pageSize = 20;
+```
+
+**20개 선택 이유**:
+- 일반 모바일 화면에서 스크롤 없이 5~7개 표시
+- 20개면 2~3번 스크롤로 전체 확인 가능 (적당한 청크)
+- 너무 적으면 빈번한 로딩 → 스크롤 끊김 느낌
+- 너무 많으면 초기 렌더링 지연
+
+#### 로드 트리거 거리: 200px
+
+```dart
+static const _loadMoreThreshold = 200.0;
+```
+
+**200px 선택 이유**:
+- 행 높이 약 60px 기준, 3~4개 행 미리 로드
+- 사용자가 스크롤 끝에 도달하기 전에 다음 페이지 준비
+- 너무 크면 불필요한 로딩 발생
+- 너무 작으면 로딩 대기 시간 체감
+
+#### 로딩 인디케이터 디자인
+
+```dart
+Padding(
+  padding: const EdgeInsets.symmetric(vertical: 16),
+  child: Center(
+    child: SizedBox(
+      width: 24,
+      height: 24,
+      child: CircularProgressIndicator(
+        strokeWidth: 2,
+        color: AppColors.mainAndAccent.primary_ff8a00,
+      ),
+    ),
+  ),
+)
+```
+
+**디자인 결정**:
+- **작은 크기 (24x24)**: 리스트 흐름 방해 최소화
+- **중앙 정렬**: 시선 자연스럽게 유도
+- **브랜드 컬러**: 앱 전체 디자인 언어와 일관성
+- **텍스트 없음**: "로딩 중" 등 불필요 (맥락상 명확)
+
+### 2.5 데이터 없음 상태 처리
+
+**파일**: `lib/features/watchlist/presentation/widgets/watchlist_expanded_row.dart`
+
+#### 상장 전 종목 vs 네트워크 오류 구분
+
+```dart
+if (error || detail == null) {
+  final isNoData = !item.hasData;  // 가격 데이터 존재 여부
+
+  return Container(
+    child: Column(
+      children: [
+        Text(isNoData
+            ? '세부 정보가 없습니다.'
+            : '세부 정보를 불러오지 못했습니다.'),
+        Text(isNoData
+            ? '해당 날짜의 거래 데이터가 없습니다.'
+            : '잠시 후 다시 시도해 주세요.'),
+        TextButton(
+          onPressed: isNoData ? onHeaderTap : onRetry,
+          child: Text(isNoData ? '닫기' : '다시 시도'),
+        ),
+      ],
+    ),
+  );
+}
+```
+
+**UI 분기 이유**:
+- **상장 전/데이터 없음**: 사용자 액션 불필요 → "닫기"로 행 접기
+- **네트워크 오류**: 재시도 가능 → "다시 시도" 버튼 제공
+- **동일한 레이아웃**: 메시지만 다르게 → 일관된 UX 유지
+
+#### 가격 "-" 표시
+
+```dart
+// WatchlistItem 모델
+final double? currentPrice;  // nullable로 변경
+bool get hasData => currentPrice != null;
+
+// 포맷터
+String formatPrice(WatchlistItem item) {
+  if (item.currentPrice == null) return '-';
+  return formatCurrencyValue(...);
+}
+```
+
+**"-" 선택 이유**:
+- "데이터 없음" 텍스트보다 간결
+- 금융앱에서 관례적인 표현
+- 숫자 정렬 유지 (같은 너비 차지)
+
+### 2.6 검색-관심종목 실시간 동기화
+
+**파일**: `lib/features/watchlist/presentation/providers/watchlist_controller.dart`
+
+```dart
+@override
+Future<WatchlistSnapshot> build() {
+  ref.listen<AsyncValue<Set<String>>>(
+    favoriteIdsControllerProvider,
+    (previous, next) {
+      final prevIds = previous?.valueOrNull;
+      final nextIds = next.valueOrNull;
+      if (prevIds != null && nextIds != null && prevIds != nextIds) {
+        refresh();  // 즐겨찾기 변경 시 관심종목 새로고침
+      }
+    },
+  );
+  return _repository.fetchWatchlist(asOf: _selectedDate);
+}
+```
+
+**동기화 방식 선택 이유**:
+- **ref.listen 사용**: Riverpod 반응형 패턴 활용
+- **이전/현재 비교**: 실제 변경이 있을 때만 새로고침
+- **초기 로딩 제외**: `prevIds != null` 조건으로 앱 시작 시 중복 호출 방지
+
+**사용자 시나리오**:
+1. 검색 화면에서 하트 탭 → 즐겨찾기 추가
+2. `favoriteIdsControllerProvider` 상태 변경
+3. `WatchlistController`가 변경 감지 → 자동 새로고침
+4. 관심종목 탭으로 이동 시 이미 최신 상태
 
 ---
 
