@@ -111,20 +111,6 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
 
   int _dayIndex(int day) => _days.indexOf(day).clamp(0, _days.length - 1);
 
-  /// 목록에서 target과 가장 가까운 값을 찾음.
-  /// 예: [1,2,3,28] 에서 31을 찾으면 28 반환
-  int _findClosestValue(List<int> values, int target) {
-    if (values.isEmpty) return target;
-    if (values.contains(target)) return target;
-
-    // target보다 작거나 같은 값 중 가장 큰 값
-    final smaller = values.where((v) => v <= target);
-    if (smaller.isNotEmpty) return smaller.last;
-
-    // 없으면 target보다 큰 값 중 가장 작은 값
-    return values.first;
-  }
-
   void _scheduleWheelSync({bool syncMonth = false, bool syncDay = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -159,24 +145,26 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
 
     // Check if month needs to change
     final months = _months;
+    final monthIndex = _monthIndex(_selectedMonth);
     var shouldSyncMonth = false;
     if (!months.contains(_selectedMonth)) {
-      // 기존 월과 가장 가까운 월 선택
-      _selectedMonth = _findClosestValue(months, _selectedMonth);
+      // 인덱스 유지, 오버플로우 시 마지막으로
+      final newMonthIndex = monthIndex.clamp(0, months.length - 1);
+      _selectedMonth = months[newMonthIndex];
       shouldSyncMonth = true;
     }
 
     // Check if day needs to change and recreate controller
     final days = _days;
-    // 기존 일과 가장 가까운 일 선택 (예: 31일 → 28일)
-    final newDay = days.contains(_selectedDay)
-        ? _selectedDay
-        : _findClosestValue(days, _selectedDay);
+    final dayIndex = _dayIndex(_selectedDay);
+    // 인덱스 유지, 오버플로우 시 마지막으로
+    final newDayIndex = dayIndex.clamp(0, days.length - 1);
+    final newDay = days[newDayIndex];
 
     // Recreate day controller with correct initial position
     _dayController.dispose();
     _dayController = FixedExtentScrollController(
-      initialItem: days.indexOf(newDay).clamp(0, days.length - 1),
+      initialItem: newDayIndex,
     );
 
     // Recreate month controller if needed
@@ -209,17 +197,17 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
     }
 
     // Update month first to get correct _days list
+    final dayIndex = _dayIndex(_selectedDay);
     _selectedMonth = month;
     final days = _days;
-    // 기존 일과 가장 가까운 일 선택 (예: 31일 → 28일)
-    final newDay = days.contains(_selectedDay)
-        ? _selectedDay
-        : _findClosestValue(days, _selectedDay);
+    // 인덱스 유지, 오버플로우 시 마지막으로
+    final newDayIndex = dayIndex.clamp(0, days.length - 1);
+    final newDay = days[newDayIndex];
 
     // Recreate day controller with correct initial position to avoid flicker
     _dayController.dispose();
     _dayController = FixedExtentScrollController(
-      initialItem: days.indexOf(newDay).clamp(0, days.length - 1),
+      initialItem: newDayIndex,
     );
 
     setState(() {
