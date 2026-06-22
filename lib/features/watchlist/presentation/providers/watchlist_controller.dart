@@ -29,7 +29,7 @@ class WatchlistController extends AsyncNotifier<WatchlistSnapshot> {
   bool _isLoadingMore = false;
 
   @override
-  Future<WatchlistSnapshot> build() {
+  Future<WatchlistSnapshot> build() async {
     // 즐겨찾기 변경 시 관심종목 새로고침
     ref.listen<AsyncValue<Set<String>>>(
       favoriteIdsControllerProvider,
@@ -42,11 +42,19 @@ class WatchlistController extends AsyncNotifier<WatchlistSnapshot> {
         }
       },
     );
-    return _repository.fetchWatchlist(
+
+    final initialSnapshot = await _repository.fetchWatchlist(
       asOf: _selectedDate,
       offset: 0,
       limit: _pageSize,
     );
+
+    // 초기 로딩 후 나머지 항목은 백그라운드에서 자동 로드
+    if (initialSnapshot.hasMore) {
+      _loadRemainingInBackground();
+    }
+
+    return initialSnapshot;
   }
 
   Future<void> refresh() async {
@@ -58,6 +66,23 @@ class WatchlistController extends AsyncNotifier<WatchlistSnapshot> {
         limit: _pageSize,
       ),
     );
+
+    // 새로고침 후에도 나머지 항목 백그라운드 로드
+    final snapshot = state.valueOrNull;
+    if (snapshot != null && snapshot.hasMore) {
+      _loadRemainingInBackground();
+    }
+  }
+
+  /// 나머지 항목을 백그라운드에서 자동 로드.
+  ///
+  /// 초기 20개 로드 후 정렬이 제대로 동작하도록
+  /// 전체 데이터를 백그라운드에서 가져옴.
+  Future<void> _loadRemainingInBackground() async {
+    while (true) {
+      final loaded = await loadMore();
+      if (!loaded) break;
+    }
   }
 
   /// 다음 페이지 로드 (무한 스크롤용).
