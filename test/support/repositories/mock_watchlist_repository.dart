@@ -733,45 +733,50 @@ class MockWatchlistRepository implements WatchlistRepository {
     WatchlistItem item,
     DateTime asOf,
   ) {
-    final changeAmount = _estimateChangeAmount(item);
+    // Mock에서는 항상 데이터가 있다고 가정
+    final currentPrice = item.currentPrice ?? 0;
+    final changeRate = item.changeRate ?? 0;
+    final tradeVolume = item.tradeVolume ?? 0;
+
+    final changeAmount = _estimateChangeAmount(currentPrice, changeRate, item.currency);
     final dateSeed = asOf.day - _defaultAvailableDates.last.day;
-    final volumeRatio = 12 + ((item.tradeVolume + dateSeed * 31) % 55) / 1.73;
-    final openRate = item.changeRate / 2;
-    final highRate = item.changeRate.abs() + 0.36;
-    final lowRate = -(item.changeRate.abs() + 0.42);
+    final volumeRatio = 12 + ((tradeVolume + dateSeed * 31) % 55) / 1.73;
+    final openRate = changeRate / 2;
+    final highRate = changeRate.abs() + 0.36;
+    final lowRate = -(changeRate.abs() + 0.42);
 
     return WatchlistDetail(
       itemId: item.id,
       symbol: item.symbol,
       market: item.market,
       currency: item.currency,
-      currentPrice: item.currentPrice,
+      currentPrice: currentPrice,
       changeAmount: changeAmount,
-      changeRate: item.changeRate,
-      tradeVolume: item.tradeVolume,
+      changeRate: changeRate,
+      tradeVolume: tradeVolume,
       volumeRatio: double.parse(volumeRatio.toStringAsFixed(2)),
       openPrice: _roundForCurrency(
         item.currency,
-        item.currentPrice - changeAmount / 3,
+        currentPrice - changeAmount / 3,
       ),
       openChangeRate: openRate,
       highPrice: _roundForCurrency(
         item.currency,
-        item.currentPrice + item.currentPrice * 0.005,
+        currentPrice + currentPrice * 0.005,
       ),
       highChangeRate: highRate,
       lowPrice: _roundForCurrency(
         item.currency,
-        item.currentPrice - item.currentPrice * 0.006,
+        currentPrice - currentPrice * 0.006,
       ),
       lowChangeRate: lowRate,
       candles: _buildDefaultCandles(item, asOf),
     );
   }
 
-  static double _estimateChangeAmount(WatchlistItem item) {
-    final raw = item.currentPrice * (item.changeRate / 100);
-    if (item.currency == 'USD') {
+  static double _estimateChangeAmount(double currentPrice, double changeRate, String currency) {
+    final raw = currentPrice * (changeRate / 100);
+    if (currency == 'USD') {
       return double.parse(raw.toStringAsFixed(2));
     }
     return raw.roundToDouble();
@@ -849,7 +854,7 @@ class MockWatchlistRepository implements WatchlistRepository {
       (sum, rune) => sum + rune,
     );
     final start = DateTime(asOf.year, asOf.month, asOf.day, 9);
-    var current = item.currentPrice * 0.98;
+    var current = (item.currentPrice ?? 0) * 0.98;
 
     for (var index = 0; index < 40; index++) {
       final variance = ((seed + index * 13) % 7 + 1) * 0.0022;

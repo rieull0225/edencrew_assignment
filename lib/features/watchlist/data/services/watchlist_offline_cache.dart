@@ -185,10 +185,10 @@ class WatchlistOfflineCache {
       symbol: json['symbol'] as String,
       name: json['name'] as String,
       currency: json['currency'] as String,
-      currentPrice: (json['currentPrice'] as num).toDouble(),
-      changeRate: (json['changeRate'] as num).toDouble(),
-      tradeVolume: json['tradeVolume'] as int,
-      marketCap: json['marketCap'] as int? ?? 0,
+      currentPrice: (json['currentPrice'] as num?)?.toDouble(),
+      changeRate: (json['changeRate'] as num?)?.toDouble(),
+      tradeVolume: json['tradeVolume'] as int?,
+      marketCap: json['marketCap'] as int?,
       logoUrl: json['logoUrl'] as String?,
     );
   }

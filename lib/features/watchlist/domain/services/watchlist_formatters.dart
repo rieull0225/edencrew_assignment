@@ -6,7 +6,8 @@ String formatAsOfDate(DateTime value) {
   return DateFormat('yyyy.MM.dd').format(value);
 }
 
-String formatChangeRate(double value) {
+String formatChangeRate(double? value) {
+  if (value == null) return '-';
   return '${value.toStringAsFixed(2)}%';
 }
 
@@ -15,7 +16,8 @@ String formatVolume(int value) {
 }
 
 String formatPrice(WatchlistItem item) {
-  return formatCurrencyValue(currency: item.currency, value: item.currentPrice);
+  if (item.currentPrice == null) return '-';
+  return formatCurrencyValue(currency: item.currency, value: item.currentPrice!);
 }
 
 String formatDetailPrice(WatchlistDetail detail) {

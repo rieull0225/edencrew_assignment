@@ -34,10 +34,10 @@ class WatchlistItem {
     required this.symbol,
     required this.name,
     required this.currency,
-    required this.currentPrice,
-    required this.changeRate,
-    required this.tradeVolume,
-    this.marketCap = 0,
+    this.currentPrice,
+    this.changeRate,
+    this.tradeVolume,
+    this.marketCap,
     this.logoUrl,
   });
 
@@ -46,13 +46,20 @@ class WatchlistItem {
   final String symbol;
   final String name;
   final String currency;
-  final double currentPrice;
-  final double changeRate;
-  final int tradeVolume;
-  final int marketCap;
+  /// 현재가. null이면 데이터 없음 (상장 전 또는 해당 날짜 데이터 미존재).
+  final double? currentPrice;
+  /// 등락률. null이면 데이터 없음.
+  final double? changeRate;
+  /// 거래량. null이면 데이터 없음.
+  final int? tradeVolume;
+  /// 시가총액. null이면 데이터 없음.
+  final int? marketCap;
   final String? logoUrl;
 
-  PriceChangeDirection get direction => directionFromDelta(changeRate);
+  /// 데이터가 있는지 여부.
+  bool get hasData => currentPrice != null;
+
+  PriceChangeDirection get direction => directionFromDelta(changeRate ?? 0);
 }
 
 @immutable

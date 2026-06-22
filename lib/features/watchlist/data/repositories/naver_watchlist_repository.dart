@@ -156,10 +156,6 @@ class NaverWatchlistRepository implements WatchlistRepository {
         );
       }
 
-      if (historicalEntry == null) {
-        continue;
-      }
-
       final item = _buildWatchlistItem(
         symbol: symbol,
         metadata: metadata,
@@ -676,10 +672,22 @@ class NaverWatchlistRepository implements WatchlistRepository {
   WatchlistItem _buildWatchlistItem({
     required String symbol,
     required NaverChartMetadataDto metadata,
-    required _HistoricalEntry historicalEntry,
+    required _HistoricalEntry? historicalEntry,
     required NaverRealtimeQuoteDto? realtimeQuote,
     required DateTime? latestDate,
   }) {
+    // 히스토리 데이터 없음 (상장 전 또는 해당 날짜 데이터 미존재)
+    if (historicalEntry == null) {
+      return WatchlistItem(
+        id: canonicalDomesticFavoriteId(symbol),
+        market: MarketType.domestic,
+        symbol: symbol,
+        name: metadata.stockName,
+        currency: 'KRW',
+        logoUrl: _logoUrlResolver.resolveDomesticStockLogoUrl(symbol),
+      );
+    }
+
     final isLatest =
         latestDate != null &&
         normalizeAsOfDate(historicalEntry.row.localDate) == latestDate;

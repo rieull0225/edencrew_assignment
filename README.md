@@ -209,7 +209,7 @@ GET https://polling.finance.naver.com/api/realtime
 
 ```text
 GET https://stock.naver.com/api/securityFe/api/fchart/domestic/stock/{symbol}
-```
+``` 
 
 응답에서 주로 사용하는 필드:
 

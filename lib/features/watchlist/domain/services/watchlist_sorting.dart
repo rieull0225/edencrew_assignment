@@ -9,15 +9,22 @@ List<WatchlistItem> sortWatchlistItems(
   final sortedItems = List<WatchlistItem>.of(items);
 
   sortedItems.sort((left, right) {
+    // 데이터 없는 종목은 항상 마지막으로
+    if (!left.hasData && !right.hasData) {
+      return left.name.compareTo(right.name);
+    }
+    if (!left.hasData) return 1;
+    if (!right.hasData) return -1;
+
     switch (sortMode) {
       case WatchlistSortMode.price:
-        final priceCompare = right.currentPrice.compareTo(left.currentPrice);
+        final priceCompare = right.currentPrice!.compareTo(left.currentPrice!);
         if (priceCompare != 0) {
           return priceCompare;
         }
         return left.name.compareTo(right.name);
       case WatchlistSortMode.changeRate:
-        final changeCompare = right.changeRate.compareTo(left.changeRate);
+        final changeCompare = right.changeRate!.compareTo(left.changeRate!);
         if (changeCompare != 0) {
           return changeCompare;
         }
@@ -29,7 +36,7 @@ List<WatchlistItem> sortWatchlistItems(
         }
         return left.symbol.compareTo(right.symbol);
       case WatchlistSortMode.marketCap:
-        final marketCapCompare = right.marketCap.compareTo(left.marketCap);
+        final marketCapCompare = right.marketCap!.compareTo(left.marketCap!);
         if (marketCapCompare != 0) {
           return marketCapCompare;
         }
