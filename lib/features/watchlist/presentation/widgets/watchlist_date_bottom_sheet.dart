@@ -279,39 +279,57 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
               ),
               SizedBox(
                 height: _pickerHeight,
-                child: Row(
+                child: Stack(
                   children: [
-                    Expanded(
-                      child: _DateWheelPicker(
-                        pickerKey: const Key('watchlist-date-picker-year'),
-                        itemKeyPrefix: 'watchlist-date-item-year',
-                        controller: _yearController,
-                        values: _years,
-                        selectedValue: _selectedYear,
-                        formatter: (value) => '$value년',
-                        onSelectedItemChanged: _selectYear,
-                      ),
+                    // 휠 피커들
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _DateWheelPicker(
+                            pickerKey: const Key('watchlist-date-picker-year'),
+                            itemKeyPrefix: 'watchlist-date-item-year',
+                            controller: _yearController,
+                            values: _years,
+                            selectedValue: _selectedYear,
+                            formatter: (value) => '$value년',
+                            onSelectedItemChanged: _selectYear,
+                          ),
+                        ),
+                        Expanded(
+                          child: _DateWheelPicker(
+                            pickerKey: const Key('watchlist-date-picker-month'),
+                            itemKeyPrefix: 'watchlist-date-item-month',
+                            controller: _monthController,
+                            values: _months,
+                            selectedValue: _selectedMonth,
+                            formatter: (value) => '$value월',
+                            onSelectedItemChanged: _selectMonth,
+                          ),
+                        ),
+                        Expanded(
+                          child: _DateWheelPicker(
+                            pickerKey: const Key('watchlist-date-picker-day'),
+                            itemKeyPrefix: 'watchlist-date-item-day',
+                            controller: _dayController,
+                            values: _days,
+                            selectedValue: _selectedDay,
+                            formatter: (value) => '$value일',
+                            onSelectedItemChanged: _selectDay,
+                          ),
+                        ),
+                      ],
                     ),
-                    Expanded(
-                      child: _DateWheelPicker(
-                        pickerKey: const Key('watchlist-date-picker-month'),
-                        itemKeyPrefix: 'watchlist-date-item-month',
-                        controller: _monthController,
-                        values: _months,
-                        selectedValue: _selectedMonth,
-                        formatter: (value) => '$value월',
-                        onSelectedItemChanged: _selectMonth,
-                      ),
-                    ),
-                    Expanded(
-                      child: _DateWheelPicker(
-                        pickerKey: const Key('watchlist-date-picker-day'),
-                        itemKeyPrefix: 'watchlist-date-item-day',
-                        controller: _dayController,
-                        values: _days,
-                        selectedValue: _selectedDay,
-                        formatter: (value) => '$value일',
-                        onSelectedItemChanged: _selectDay,
+                    // 선택 영역 오버레이 (가운데 고정)
+                    Center(
+                      child: IgnorePointer(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 24),
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppColors.bg.bg_4_333333,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -434,33 +452,20 @@ class _DateWheelPicker extends StatelessWidget {
             child: SizedBox(
               height: _WatchlistDateBottomSheetState._itemExtent,
               child: Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 120),
-                  curve: Curves.easeOut,
-                  width: 100,
-                  height: 40,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.bg.bg_4_333333
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
+                child: Text(
+                  formatter(value),
+                  key: Key('$itemKeyPrefix-$value'),
+                  style: tabularTextStyle(
+                    (isSelected
+                            ? AppTypography.sheetPickerValue
+                            : AppTypography.sheetOption)
+                        .copyWith(
+                          color: isSelected
+                              ? AppColors.text.text_fafafa
+                              : AppColors.text.text_3_9e9e9e,
+                        ),
                   ),
-                  child: Text(
-                    formatter(value),
-                    key: Key('$itemKeyPrefix-$value'),
-                    style: tabularTextStyle(
-                      (isSelected
-                              ? AppTypography.sheetPickerValue
-                              : AppTypography.sheetOption)
-                          .copyWith(
-                            color: isSelected
-                                ? AppColors.text.text_fafafa
-                                : AppColors.text.text_3_9e9e9e,
-                          ),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
+                  textAlign: TextAlign.center,
                 ),
               ),
             ),
