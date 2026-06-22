@@ -140,47 +140,41 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
       return;
     }
 
-    // Update year first to get correct _months and _days lists
+    // 연도 변경 전에 현재 인덱스 저장
+    final oldMonthIndex = _monthIndex(_selectedMonth);
+    final oldDayIndex = _dayIndex(_selectedDay);
+
+    // Update year to get correct _months and _days lists
     _selectedYear = year;
 
-    // Check if month needs to change
+    // 월: 인덱스 유지, 오버플로우 시 마지막으로
     final months = _months;
-    final monthIndex = _monthIndex(_selectedMonth);
-    var shouldSyncMonth = false;
-    if (!months.contains(_selectedMonth)) {
-      // 인덱스 유지, 오버플로우 시 마지막으로
-      final newMonthIndex = monthIndex.clamp(0, months.length - 1);
-      _selectedMonth = months[newMonthIndex];
-      shouldSyncMonth = true;
-    }
+    final newMonthIndex = oldMonthIndex.clamp(0, months.length - 1);
+    _selectedMonth = months[newMonthIndex];
 
-    // Check if day needs to change and recreate controller
+    // 일: 인덱스 유지, 오버플로우 시 마지막으로
     final days = _days;
-    final dayIndex = _dayIndex(_selectedDay);
-    // 인덱스 유지, 오버플로우 시 마지막으로
-    final newDayIndex = dayIndex.clamp(0, days.length - 1);
+    final newDayIndex = oldDayIndex.clamp(0, days.length - 1);
     final newDay = days[newDayIndex];
 
-    // Recreate day controller with correct initial position
+    // 월 컨트롤러 재생성 (연도 바뀌면 월 목록도 바뀜)
+    _monthController.dispose();
+    _monthController = FixedExtentScrollController(
+      initialItem: newMonthIndex,
+    );
+
+    // 일 컨트롤러 재생성
     _dayController.dispose();
     _dayController = FixedExtentScrollController(
       initialItem: newDayIndex,
     );
-
-    // Recreate month controller if needed
-    if (shouldSyncMonth) {
-      _monthController.dispose();
-      _monthController = FixedExtentScrollController(
-        initialItem: months.indexOf(_selectedMonth).clamp(0, months.length - 1),
-      );
-    }
 
     setState(() {
       _selectedDay = newDay;
     });
 
     // 다음 프레임에서 스크롤 위치 확실히 맞추기
-    _scheduleWheelSync(syncMonth: shouldSyncMonth, syncDay: true);
+    _scheduleWheelSync(syncMonth: true, syncDay: true);
   }
 
   /// 월 선택 처리.

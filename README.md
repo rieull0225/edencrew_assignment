@@ -200,7 +200,7 @@ GET https://polling.finance.naver.com/api/realtime
 - 과거 날짜는 historical 데이터 기준으로 계산합니다.
 
 ### 3. 종목 메타데이터
-
+ 
 무엇을 가져오나:
  
 - 종목명, 거래소명 같은 기본 정보를 조회합니다. 
