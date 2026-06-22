@@ -39,9 +39,19 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   int _displayCount = _pageSize;
 
   /// 페이지네이션 단위.
+  ///
+  /// 20개 선택 이유:
+  /// - 일반적인 모바일 화면에서 스크롤 없이 5~7개 표시
+  /// - 20개면 2~3번 스크롤로 전체 확인 가능 (적당한 청크)
+  /// - 너무 적으면 빈번한 로딩, 너무 많으면 초기 로딩 지연
   static const _pageSize = 20;
 
   /// 스크롤 끝에서 이 거리 이내로 오면 다음 페이지 로드.
+  ///
+  /// 200px 선택 이유:
+  /// - 행 높이 약 60px 기준, 3~4개 행 미리 로드
+  /// - 사용자가 끝에 도달하기 전에 자연스럽게 로딩
+  /// - 너무 크면 불필요한 로딩, 너무 작으면 끊김 느낌
   static const _loadMoreThreshold = 200.0;
 
   /// 금융앱: 백그라운드에서 30초 이상 경과 시에만 새로고침.
@@ -67,6 +77,12 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     super.dispose();
   }
 
+  /// 스크롤 이벤트 핸들러 - 무한 스크롤 구현.
+  ///
+  /// 무한 스크롤 선택 이유:
+  /// - "더 보기" 버튼 대비 사용자 경험 향상 (끊김 없는 탐색)
+  /// - 금융앱에서 종목 리스트는 빠른 스캔이 중요
+  /// - 별도 페이지 번호 UI 불필요 (단순함 유지)
   void _onScroll() {
     if (!_scrollController.hasClients) return;
 
@@ -91,6 +107,11 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     });
   }
 
+  /// 새로고침 시 페이지네이션 리셋.
+  ///
+  /// 리셋 이유:
+  /// - 새로고침은 "처음부터 다시 보기" 의도
+  /// - 데이터 변경 시 기존 위치 유지보다 최신 상위 항목이 중요
   void _resetPagination() {
     _displayCount = _pageSize;
   }
@@ -299,6 +320,12 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                           itemCount: items.length + (hasMore ? 1 : 0),
                           itemBuilder: (context, index) {
                             // 마지막 항목: 로딩 인디케이터
+                            //
+                            // 로딩 인디케이터 UI 선택 이유:
+                            // - 작은 크기(24x24): 리스트 흐름 방해 최소화
+                            // - 중앙 정렬: 시선 자연스럽게 유도
+                            // - 앱 브랜드 컬러: 일관된 디자인 언어
+                            // - 텍스트 없음: "로딩 중" 등 불필요 (맥락상 명확)
                             if (index >= items.length) {
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 16),

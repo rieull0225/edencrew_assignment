@@ -264,6 +264,11 @@ class _ExpandedBody extends StatelessWidget {
 
     if (error || detail == null) {
       // 데이터 없는 종목 (상장 전 등) vs 일반 오류 구분
+      //
+      // UI 분기 이유:
+      // - 상장 전/데이터 없음: 사용자 액션 불필요 → "닫기"로 행 접기
+      // - 네트워크 오류: 재시도 가능 → "다시 시도" 버튼 제공
+      // - 동일한 레이아웃으로 메시지만 다르게 → 일관된 UX
       final isNoData = !item.hasData;
 
       return _BodyFrame(
