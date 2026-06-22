@@ -204,7 +204,7 @@ GET https://polling.finance.naver.com/api/realtime
 무엇을 가져오나:
 
 - 종목명, 거래소명 같은 기본 정보를 조회합니다. 
-
+ 
 요청:
 
 ```text

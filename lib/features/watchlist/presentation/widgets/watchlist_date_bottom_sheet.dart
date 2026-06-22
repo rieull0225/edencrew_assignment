@@ -111,6 +111,20 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
 
   int _dayIndex(int day) => _days.indexOf(day).clamp(0, _days.length - 1);
 
+  /// 목록에서 target과 가장 가까운 값을 찾음.
+  /// 예: [1,2,3,28] 에서 31을 찾으면 28 반환
+  int _findClosestValue(List<int> values, int target) {
+    if (values.isEmpty) return target;
+    if (values.contains(target)) return target;
+
+    // target보다 작거나 같은 값 중 가장 큰 값
+    final smaller = values.where((v) => v <= target);
+    if (smaller.isNotEmpty) return smaller.last;
+
+    // 없으면 target보다 큰 값 중 가장 작은 값
+    return values.first;
+  }
+
   void _scheduleWheelSync({bool syncMonth = false, bool syncDay = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -147,13 +161,17 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
     final months = _months;
     var shouldSyncMonth = false;
     if (!months.contains(_selectedMonth)) {
-      _selectedMonth = months.first;
+      // 기존 월과 가장 가까운 월 선택
+      _selectedMonth = _findClosestValue(months, _selectedMonth);
       shouldSyncMonth = true;
     }
 
     // Check if day needs to change and recreate controller
     final days = _days;
-    final newDay = days.contains(_selectedDay) ? _selectedDay : days.first;
+    // 기존 일과 가장 가까운 일 선택 (예: 31일 → 28일)
+    final newDay = days.contains(_selectedDay)
+        ? _selectedDay
+        : _findClosestValue(days, _selectedDay);
 
     // Recreate day controller with correct initial position
     _dayController.dispose();
@@ -190,7 +208,10 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
     // Update month first to get correct _days list
     _selectedMonth = month;
     final days = _days;
-    final newDay = days.contains(_selectedDay) ? _selectedDay : days.first;
+    // 기존 일과 가장 가까운 일 선택 (예: 31일 → 28일)
+    final newDay = days.contains(_selectedDay)
+        ? _selectedDay
+        : _findClosestValue(days, _selectedDay);
 
     // Recreate day controller with correct initial position to avoid flicker
     _dayController.dispose();
