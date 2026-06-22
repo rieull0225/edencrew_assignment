@@ -279,57 +279,39 @@ class _WatchlistDateBottomSheetState extends State<WatchlistDateBottomSheet> {
               ),
               SizedBox(
                 height: _pickerHeight,
-                child: Stack(
+                child: Row(
                   children: [
-                    // 휠 피커들
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _DateWheelPicker(
-                            pickerKey: const Key('watchlist-date-picker-year'),
-                            itemKeyPrefix: 'watchlist-date-item-year',
-                            controller: _yearController,
-                            values: _years,
-                            selectedValue: _selectedYear,
-                            formatter: (value) => '$value년',
-                            onSelectedItemChanged: _selectYear,
-                          ),
-                        ),
-                        Expanded(
-                          child: _DateWheelPicker(
-                            pickerKey: const Key('watchlist-date-picker-month'),
-                            itemKeyPrefix: 'watchlist-date-item-month',
-                            controller: _monthController,
-                            values: _months,
-                            selectedValue: _selectedMonth,
-                            formatter: (value) => '$value월',
-                            onSelectedItemChanged: _selectMonth,
-                          ),
-                        ),
-                        Expanded(
-                          child: _DateWheelPicker(
-                            pickerKey: const Key('watchlist-date-picker-day'),
-                            itemKeyPrefix: 'watchlist-date-item-day',
-                            controller: _dayController,
-                            values: _days,
-                            selectedValue: _selectedDay,
-                            formatter: (value) => '$value일',
-                            onSelectedItemChanged: _selectDay,
-                          ),
-                        ),
-                      ],
+                    Expanded(
+                      child: _DateWheelPicker(
+                        pickerKey: const Key('watchlist-date-picker-year'),
+                        itemKeyPrefix: 'watchlist-date-item-year',
+                        controller: _yearController,
+                        values: _years,
+                        selectedValue: _selectedYear,
+                        formatter: (value) => '$value년',
+                        onSelectedItemChanged: _selectYear,
+                      ),
                     ),
-                    // 선택 영역 오버레이 (가운데 고정)
-                    Center(
-                      child: IgnorePointer(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 24),
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.bg.bg_4_333333,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                    Expanded(
+                      child: _DateWheelPicker(
+                        pickerKey: const Key('watchlist-date-picker-month'),
+                        itemKeyPrefix: 'watchlist-date-item-month',
+                        controller: _monthController,
+                        values: _months,
+                        selectedValue: _selectedMonth,
+                        formatter: (value) => '$value월',
+                        onSelectedItemChanged: _selectMonth,
+                      ),
+                    ),
+                    Expanded(
+                      child: _DateWheelPicker(
+                        pickerKey: const Key('watchlist-date-picker-day'),
+                        itemKeyPrefix: 'watchlist-date-item-day',
+                        controller: _dayController,
+                        values: _days,
+                        selectedValue: _selectedDay,
+                        formatter: (value) => '$value일',
+                        onSelectedItemChanged: _selectDay,
                       ),
                     ),
                   ],
@@ -424,54 +406,70 @@ class _DateWheelPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListWheelScrollView.useDelegate(
-      key: pickerKey,
-      controller: controller,
-      physics: const FixedExtentScrollPhysics(),
-      itemExtent: _WatchlistDateBottomSheetState._itemExtent,
-      diameterRatio: 100,
-      perspective: 0.00001,
-      squeeze: 1,
-      overAndUnderCenterOpacity: 1,
-      onSelectedItemChanged: onSelectedItemChanged,
-      childDelegate: ListWheelChildBuilderDelegate(
-        childCount: values.length,
-        builder: (context, index) {
-          final value = values[index];
-          final isSelected = value == selectedValue;
+    return Stack(
+      children: [
+        // 선택 영역 오버레이 (뒤에 고정)
+        Center(
+          child: Container(
+            width: 100,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.bg.bg_4_333333,
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        // 휠 피커 (앞에서 스크롤)
+        ListWheelScrollView.useDelegate(
+          key: pickerKey,
+          controller: controller,
+          physics: const FixedExtentScrollPhysics(),
+          itemExtent: _WatchlistDateBottomSheetState._itemExtent,
+          diameterRatio: 100,
+          perspective: 0.00001,
+          squeeze: 1,
+          overAndUnderCenterOpacity: 1,
+          onSelectedItemChanged: onSelectedItemChanged,
+          childDelegate: ListWheelChildBuilderDelegate(
+            childCount: values.length,
+            builder: (context, index) {
+              final value = values[index];
+              final isSelected = value == selectedValue;
 
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              controller.animateToItem(
-                index,
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  controller.animateToItem(
+                    index,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                  );
+                },
+                child: SizedBox(
+                  height: _WatchlistDateBottomSheetState._itemExtent,
+                  child: Center(
+                    child: Text(
+                      formatter(value),
+                      key: Key('$itemKeyPrefix-$value'),
+                      style: tabularTextStyle(
+                        (isSelected
+                                ? AppTypography.sheetPickerValue
+                                : AppTypography.sheetOption)
+                            .copyWith(
+                              color: isSelected
+                                  ? AppColors.text.text_fafafa
+                                  : AppColors.text.text_3_9e9e9e,
+                            ),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
               );
             },
-            child: SizedBox(
-              height: _WatchlistDateBottomSheetState._itemExtent,
-              child: Center(
-                child: Text(
-                  formatter(value),
-                  key: Key('$itemKeyPrefix-$value'),
-                  style: tabularTextStyle(
-                    (isSelected
-                            ? AppTypography.sheetPickerValue
-                            : AppTypography.sheetOption)
-                        .copyWith(
-                          color: isSelected
-                              ? AppColors.text.text_fafafa
-                              : AppColors.text.text_3_9e9e9e,
-                        ),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+          ),
+        ),
+      ],
     );
   }
 }
