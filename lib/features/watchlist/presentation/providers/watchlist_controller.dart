@@ -111,8 +111,8 @@ class WatchlistController extends AsyncNotifier<WatchlistSnapshot> {
       );
 
       return nextPage.items.isNotEmpty;
-    } catch (e, st) {
-      // 추가 로딩 실패 시 기존 데이터 유지, 에러만 로깅
+    } catch (_) {
+      // 추가 로딩 실패 시 기존 데이터 유지
       // (전체 state를 error로 바꾸지 않음)
       return false;
     } finally {
