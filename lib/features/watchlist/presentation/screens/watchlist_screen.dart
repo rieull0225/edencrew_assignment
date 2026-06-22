@@ -35,17 +35,6 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   /// 백그라운드 진입 시간 (생명주기 관리용).
   DateTime? _pausedAt;
 
-  /// 현재 표시 중인 아이템 수 (페이지네이션).
-  int _displayCount = _pageSize;
-
-  /// 페이지네이션 단위.
-  ///
-  /// 20개 선택 이유:
-  /// - 일반적인 모바일 화면에서 스크롤 없이 12~15개 표시
-  /// - 20개면 2~3번 스크롤로 전체 확인 가능 (적당한 청크)
-  /// - 너무 적으면 빈번한 로딩, 너무 많으면 초기 로딩 지연
-  static const _pageSize = 20;
-
   /// 스크롤 끝에서 이 거리 이내로 오면 다음 페이지 로드.
   ///
   /// 200px 선택 이유:
@@ -77,43 +66,27 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     super.dispose();
   }
 
-  /// 스크롤 이벤트 핸들러 - 무한 스크롤 구현.
+  /// 스크롤 이벤트 핸들러 - 무한 스크롤 구현 (API 레벨 페이지네이션).
   ///
   /// 무한 스크롤 선택 이유:
   /// - "더 보기" 버튼 대비 사용자 경험 향상 (끊김 없는 탐색)
   /// - 금융앱에서 종목 리스트는 빠른 스캔이 중요
   /// - 별도 페이지 번호 UI 불필요 (단순함 유지)
+  ///
+  /// API 레벨 페이지네이션 이점:
+  /// - 초기 로딩 빠름 (20개만 API 호출)
+  /// - 메모리 효율적 (필요한 데이터만 로드)
+  /// - 네트워크 효율적 (스크롤 시에만 추가 로드)
   void _onScroll() {
     if (!_scrollController.hasClients) return;
 
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
 
-    // 스크롤이 끝에 가까워지면 더 로드
+    // 스크롤이 끝에 가까워지면 다음 페이지 API 호출
     if (maxScroll - currentScroll <= _loadMoreThreshold) {
-      _loadMore();
+      unawaited(ref.read(watchlistControllerProvider.notifier).loadMore());
     }
-  }
-
-  void _loadMore() {
-    final snapshot = ref.read(watchlistControllerProvider).valueOrNull;
-    if (snapshot == null) return;
-
-    final totalItems = snapshot.items.length;
-    if (_displayCount >= totalItems) return;
-
-    setState(() {
-      _displayCount = (_displayCount + _pageSize).clamp(0, totalItems);
-    });
-  }
-
-  /// 새로고침 시 페이지네이션 리셋.
-  ///
-  /// 리셋 이유:
-  /// - 새로고침은 "처음부터 다시 보기" 의도
-  /// - 데이터 변경 시 기존 위치 유지보다 최신 상위 항목이 중요
-  void _resetPagination() {
-    _displayCount = _pageSize;
   }
 
   void _handlePause() {
@@ -138,7 +111,6 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
 
   Future<void> _refresh() async {
     _clearAvailableDatesCache();
-    _resetPagination();
     await ref.read(watchlistControllerProvider.notifier).refresh();
     await _syncSelectedDetailWithSnapshot();
   }
@@ -260,12 +232,12 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     final sortMode = ref.watch(watchlistSortModeProvider);
     final detailUiState = ref.watch(watchlistDetailControllerProvider);
     final snapshot = snapshotAsync.valueOrNull;
-    final allItems = snapshot == null
+    // API 레벨 페이지네이션: 이미 로드된 아이템만 정렬
+    final items = snapshot == null
         ? const <WatchlistItem>[]
         : sortWatchlistItems(snapshot.items, sortMode);
-    // 페이지네이션: _displayCount만큼만 표시
-    final items = allItems.take(_displayCount).toList();
-    final hasMore = items.length < allItems.length;
+    // hasMore는 스냅샷에서 직접 확인 (totalCount와 비교)
+    final hasMore = snapshot?.hasMore ?? false;
     final selectedItemId = detailUiState.selectedItemId;
 
     return ColoredBox(

@@ -69,12 +69,17 @@ class CountingWatchlistRepository implements WatchlistRepository {
         marketCap: 408000000000,
       ),
     ],
+    totalCount: 1,
   );
 
   int detailCalls = 0;
 
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) async => snapshot;
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async => snapshot;
 
   @override
   Future<List<DateTime>> fetchAvailableDates() async => snapshot.availableDates;

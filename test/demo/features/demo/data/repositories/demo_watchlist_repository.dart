@@ -39,8 +39,12 @@ class DemoWatchlistRepository implements WatchlistRepository {
   }
 
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) {
-    return _delegate.fetchWatchlist(asOf: asOf);
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) {
+    return _delegate.fetchWatchlist(asOf: asOf, offset: offset, limit: limit);
   }
 
   @override

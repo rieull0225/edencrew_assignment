@@ -168,12 +168,28 @@ class WatchlistSnapshot {
   const WatchlistSnapshot({
     required this.asOf,
     required this.items,
+    required this.totalCount,
     this.availableDates = const [],
   });
 
   final DateTime asOf;
   final List<WatchlistItem> items;
+  /// 전체 즐겨찾기 수 (페이지네이션용).
+  final int totalCount;
   final List<DateTime> availableDates;
+
+  /// 더 로드할 항목이 있는지 여부.
+  bool get hasMore => items.length < totalCount;
+
+  /// 현재 로드된 아이템에 더 추가하여 새 스냅샷 생성.
+  WatchlistSnapshot appendItems(List<WatchlistItem> newItems, int newTotalCount) {
+    return WatchlistSnapshot(
+      asOf: asOf,
+      items: [...items, ...newItems],
+      totalCount: newTotalCount,
+      availableDates: availableDates,
+    );
+  }
 }
 
 PriceChangeDirection directionFromDelta(double value) {

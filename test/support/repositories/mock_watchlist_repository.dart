@@ -363,7 +363,11 @@ class MockWatchlistRepository implements WatchlistRepository {
   }
 
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) async {
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async {
     await Future<void>.delayed(latency);
     if (shouldThrow) {
       throw Exception('관심종목 데이터를 불러오지 못했습니다.');
@@ -376,13 +380,22 @@ class MockWatchlistRepository implements WatchlistRepository {
     }
 
     final favoriteIds = await loadFavoriteIds();
-    final filteredItems = snapshot.items
+    final allItems = snapshot.items
         .where((item) => favoriteIds.contains(item.id))
         .toList(growable: false);
+    final totalCount = allItems.length;
+
+    // 페이지네이션 적용
+    final endIndex = (offset + limit).clamp(0, allItems.length);
+    final pagedItems = allItems.sublist(
+      offset.clamp(0, allItems.length),
+      endIndex,
+    );
 
     return WatchlistSnapshot(
       asOf: snapshot.asOf,
-      items: filteredItems,
+      items: pagedItems,
+      totalCount: totalCount,
       availableDates: snapshot.availableDates,
     );
   }
@@ -590,6 +603,7 @@ class MockWatchlistRepository implements WatchlistRepository {
         formatApiDate(normalizeAsOfDate(entry.key)): WatchlistSnapshot(
           asOf: normalizeAsOfDate(entry.value.asOf),
           items: entry.value.items,
+          totalCount: entry.value.totalCount,
           availableDates: entry.value.availableDates.isEmpty
               ? normalizedAvailableDates
               : entry.value.availableDates
@@ -634,10 +648,12 @@ class MockWatchlistRepository implements WatchlistRepository {
   }
 
   static WatchlistSnapshot _buildSnapshotForDate(DateTime asOf) {
+    final items = _buildItemsForDate(asOf);
     return WatchlistSnapshot(
       asOf: asOf,
       availableDates: _defaultAvailableDates,
-      items: _buildItemsForDate(asOf),
+      items: items,
+      totalCount: items.length,
     );
   }
 

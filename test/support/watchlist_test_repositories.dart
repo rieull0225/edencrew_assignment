@@ -60,6 +60,7 @@ class MissingSelectionOnDateChangeRepository extends MockWatchlistRepository {
                 marketCap: 408000000000,
               ),
             ],
+            totalCount: 2,
           ),
           DateTime(2024, 2, 14): WatchlistSnapshot(
             asOf: DateTime(2024, 2, 14),
@@ -77,6 +78,7 @@ class MissingSelectionOnDateChangeRepository extends MockWatchlistRepository {
                 marketCap: 2890000000000,
               ),
             ],
+            totalCount: 1,
           ),
         },
         detailOverridesByDate: {
@@ -113,7 +115,11 @@ class SequenceWatchlistRepository implements WatchlistRepository {
   int get detailFetchCount => _detailIndex;
 
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) async {
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async {
     final index = _snapshotIndex < _snapshots.length
         ? _snapshotIndex++
         : _snapshots.length - 1;
@@ -173,7 +179,11 @@ class DateAwareWatchlistRepository implements WatchlistRepository {
   };
 
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) async {
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async {
     return _snapshots[asOf ?? DateTime(2024, 2, 15)]!;
   }
 
@@ -213,7 +223,11 @@ class DetailRetryRepository implements WatchlistRepository {
   bool _failedOnce = false;
 
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) async {
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async {
     return buildSnapshot(172.54, DateTime(2024, 2, 15));
   }
 
@@ -279,13 +293,19 @@ class SearchFavoriteFlowRepository implements WatchlistRepository {
   );
 
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) async {
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    final items = _favoriteIds.contains(_watchlistItem.id)
+        ? const [_watchlistItem]
+        : const <WatchlistItem>[];
     return WatchlistSnapshot(
       asOf: DateTime(2024, 2, 15),
       availableDates: [DateTime(2024, 2, 15), DateTime(2024, 2, 14)],
-      items: _favoriteIds.contains(_watchlistItem.id)
-          ? const [_watchlistItem]
-          : const <WatchlistItem>[],
+      items: items,
+      totalCount: items.length,
     );
   }
 
@@ -359,33 +379,36 @@ class SearchFavoriteFlowRepository implements WatchlistRepository {
 WatchlistSnapshot buildSnapshot(double applePrice, DateTime asOf) {
   final availableDates = [DateTime(2024, 2, 15), DateTime(2024, 2, 14)];
 
+  final items = [
+    WatchlistItem(
+      id: 'apple',
+      market: MarketType.overseas,
+      symbol: 'AAPL',
+      name: '애플',
+      currency: 'USD',
+      currentPrice: applePrice,
+      changeRate: asOf.day == 14 ? -0.45 : 0.70,
+      tradeVolume: 4517254,
+      marketCap: 2890000000000,
+    ),
+    const WatchlistItem(
+      id: 'samsung',
+      market: MarketType.domestic,
+      symbol: '005930',
+      name: '삼성전자',
+      currency: 'KRW',
+      currentPrice: 68400,
+      changeRate: -0.20,
+      tradeVolume: 8210456,
+      marketCap: 408000000000,
+    ),
+  ];
+
   return WatchlistSnapshot(
     asOf: asOf,
     availableDates: availableDates,
-    items: [
-      WatchlistItem(
-        id: 'apple',
-        market: MarketType.overseas,
-        symbol: 'AAPL',
-        name: '애플',
-        currency: 'USD',
-        currentPrice: applePrice,
-        changeRate: asOf.day == 14 ? -0.45 : 0.70,
-        tradeVolume: 4517254,
-        marketCap: 2890000000000,
-      ),
-      const WatchlistItem(
-        id: 'samsung',
-        market: MarketType.domestic,
-        symbol: '005930',
-        name: '삼성전자',
-        currency: 'KRW',
-        currentPrice: 68400,
-        changeRate: -0.20,
-        tradeVolume: 8210456,
-        marketCap: 408000000000,
-      ),
-    ],
+    items: items,
+    totalCount: items.length,
   );
 }
 

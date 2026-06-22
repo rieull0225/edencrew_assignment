@@ -144,6 +144,7 @@ class WatchlistOfflineCache {
     return {
       'asOf': formatApiDate(snapshot.asOf),
       'items': snapshot.items.map(_serializeItem).toList(),
+      'totalCount': snapshot.totalCount,
       'availableDates': snapshot.availableDates.map(formatApiDate).toList(),
     };
   }
@@ -168,12 +169,16 @@ class WatchlistOfflineCache {
     final asOfStr = json['asOf'] as String;
     final itemsJson = json['items'] as List<dynamic>;
     final datesJson = json['availableDates'] as List<dynamic>? ?? [];
+    final items = itemsJson
+        .map((e) => _deserializeItem(e as Map<String, dynamic>))
+        .toList();
+    // totalCount가 없으면 items 길이로 fallback (레거시 캐시 호환)
+    final totalCount = json['totalCount'] as int? ?? items.length;
 
     return WatchlistSnapshot(
       asOf: _parseDate(asOfStr),
-      items: itemsJson
-          .map((e) => _deserializeItem(e as Map<String, dynamic>))
-          .toList(),
+      items: items,
+      totalCount: totalCount,
       availableDates: datesJson.map((e) => _parseDate(e as String)).toList(),
     );
   }

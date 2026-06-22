@@ -1,7 +1,15 @@
 import '../models/watchlist_models.dart';
 
 abstract interface class WatchlistRepository {
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf});
+  /// 관심종목 스냅샷 조회 (페이지네이션 지원).
+  ///
+  /// [offset]: 시작 인덱스 (기본값 0)
+  /// [limit]: 가져올 항목 수 (기본값 20)
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  });
 
   /// 거래 가능한 날짜 목록 조회 (내림차순 - 최신순).
   ///

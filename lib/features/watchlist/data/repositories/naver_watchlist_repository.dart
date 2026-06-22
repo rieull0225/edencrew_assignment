@@ -85,15 +85,25 @@ class NaverWatchlistRepository implements WatchlistRepository {
   /// - 성공 시 오프라인 캐시에 저장
   /// - 네트워크 실패 시 캐시 데이터 반환
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) async {
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async {
     try {
-      final snapshot = await _fetchWatchlistInternal(asOf: asOf);
-      // 성공 시 오프라인 캐시에 저장
-      _offlineCache?.saveSnapshot(snapshot);
+      final snapshot = await _fetchWatchlistInternal(
+        asOf: asOf,
+        offset: offset,
+        limit: limit,
+      );
+      // 성공 시 오프라인 캐시에 저장 (첫 페이지만)
+      if (offset == 0) {
+        _offlineCache?.saveSnapshot(snapshot);
+      }
       return snapshot;
     } catch (e) {
-      // 네트워크 오류 시 오프라인 캐시에서 복구 시도
-      if (isNetworkError(e)) {
+      // 네트워크 오류 시 오프라인 캐시에서 복구 시도 (첫 페이지만)
+      if (isNetworkError(e) && offset == 0) {
         final cached = _offlineCache?.loadSnapshot();
         if (cached != null) {
           return cached;
@@ -103,38 +113,59 @@ class NaverWatchlistRepository implements WatchlistRepository {
     }
   }
 
-  /// 실제 관심종목 조회 로직 (내부용).
-  Future<WatchlistSnapshot> _fetchWatchlistInternal({DateTime? asOf}) async {
+  /// 실제 관심종목 조회 로직 (내부용, 페이지네이션 지원).
+  Future<WatchlistSnapshot> _fetchWatchlistInternal({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async {
     // 1. Load canonical favorite ids
     final favoriteIds = await loadFavoriteIds();
+    final totalCount = favoriteIds.length;
 
     // 2. Convert each id into a six-digit domestic symbol
-    final symbols = <String>[];
+    final allSymbols = <String>[];
     for (final id in favoriteIds) {
       final symbol = domesticSymbolFromFavoriteId(id);
       if (symbol != null) {
-        symbols.add(symbol);
+        allSymbols.add(symbol);
       }
     }
 
-    if (symbols.isEmpty) {
+    if (allSymbols.isEmpty) {
       return WatchlistSnapshot(
         asOf: normalizeAsOfDate(asOf ?? DateTime.now()),
         items: [],
+        totalCount: 0,
         availableDates: [],
       );
     }
 
-    // 3. Load metadata and realtime quotes for those symbols
+    // 3. 페이지네이션: offset부터 limit개만 추출
+    final endIndex = (offset + limit).clamp(0, allSymbols.length);
+    final symbols = allSymbols.sublist(offset.clamp(0, allSymbols.length), endIndex);
+
+    if (symbols.isEmpty) {
+      // offset이 범위를 벗어남 - 빈 결과 반환
+      final availableDates = await fetchAvailableDates();
+      return WatchlistSnapshot(
+        asOf: _resolveAsOf(availableDates, asOf),
+        items: [],
+        totalCount: totalCount,
+        availableDates: availableDates,
+      );
+    }
+
+    // 4. Load metadata and realtime quotes for paged symbols only
     final metadataMap = await _loadMetadataBatch(symbols);
     final realtimeQuotes = await _loadRealtimeQuotes(symbols);
 
-    // 4-5. Load available dates and resolve asOf
+    // 5. Load available dates and resolve asOf
     final availableDates = await fetchAvailableDates();
     final resolvedAsOf = _resolveAsOf(availableDates, asOf);
     final latestDate = availableDates.isNotEmpty ? availableDates.first : null;
 
-    // 6. Build WatchlistItem for each symbol
+    // 6. Build WatchlistItem for each symbol in this page
     final items = <WatchlistItem>[];
     for (final symbol in symbols) {
       final metadata = metadataMap[symbol];
@@ -169,6 +200,7 @@ class NaverWatchlistRepository implements WatchlistRepository {
     return WatchlistSnapshot(
       asOf: resolvedAsOf,
       items: items,
+      totalCount: totalCount,
       availableDates: availableDates,
     );
   }

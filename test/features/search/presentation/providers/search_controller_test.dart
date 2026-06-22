@@ -128,7 +128,11 @@ class _SearchControllerAssignmentRepository implements WatchlistRepository {
   }
 
   @override
-  Future<WatchlistSnapshot> fetchWatchlist({DateTime? asOf}) async {
+  Future<WatchlistSnapshot> fetchWatchlist({
+    DateTime? asOf,
+    int offset = 0,
+    int limit = 20,
+  }) async {
     throw UnimplementedError();
   }
 
