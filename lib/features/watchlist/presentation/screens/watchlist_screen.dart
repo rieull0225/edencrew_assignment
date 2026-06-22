@@ -28,11 +28,21 @@ class WatchlistScreen extends ConsumerStatefulWidget {
 
 class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   late final AppLifecycleListener _appLifecycleListener;
+  late final ScrollController _scrollController;
   List<DateTime>? _availableDatesCache;
   Future<List<DateTime>>? _availableDatesFuture;
 
   /// 백그라운드 진입 시간 (생명주기 관리용).
   DateTime? _pausedAt;
+
+  /// 현재 표시 중인 아이템 수 (페이지네이션).
+  int _displayCount = _pageSize;
+
+  /// 페이지네이션 단위.
+  static const _pageSize = 20;
+
+  /// 스크롤 끝에서 이 거리 이내로 오면 다음 페이지 로드.
+  static const _loadMoreThreshold = 200.0;
 
   /// 금융앱: 백그라운드에서 30초 이상 경과 시에만 새로고침.
   /// 짧은 앱 전환(알림 확인 등)에서는 불필요한 API 호출 방지.
@@ -41,6 +51,7 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController()..addListener(_onScroll);
     _appLifecycleListener = AppLifecycleListener(
       onResume: _handleResume,
       onPause: _handlePause,
@@ -51,8 +62,37 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _appLifecycleListener.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+
+    // 스크롤이 끝에 가까워지면 더 로드
+    if (maxScroll - currentScroll <= _loadMoreThreshold) {
+      _loadMore();
+    }
+  }
+
+  void _loadMore() {
+    final snapshot = ref.read(watchlistControllerProvider).valueOrNull;
+    if (snapshot == null) return;
+
+    final totalItems = snapshot.items.length;
+    if (_displayCount >= totalItems) return;
+
+    setState(() {
+      _displayCount = (_displayCount + _pageSize).clamp(0, totalItems);
+    });
+  }
+
+  void _resetPagination() {
+    _displayCount = _pageSize;
   }
 
   void _handlePause() {
@@ -77,6 +117,7 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
 
   Future<void> _refresh() async {
     _clearAvailableDatesCache();
+    _resetPagination();
     await ref.read(watchlistControllerProvider.notifier).refresh();
     await _syncSelectedDetailWithSnapshot();
   }
@@ -198,9 +239,12 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     final sortMode = ref.watch(watchlistSortModeProvider);
     final detailUiState = ref.watch(watchlistDetailControllerProvider);
     final snapshot = snapshotAsync.valueOrNull;
-    final items = snapshot == null
+    final allItems = snapshot == null
         ? const <WatchlistItem>[]
         : sortWatchlistItems(snapshot.items, sortMode);
+    // 페이지네이션: _displayCount만큼만 표시
+    final items = allItems.take(_displayCount).toList();
+    final hasMore = items.length < allItems.length;
     final selectedItemId = detailUiState.selectedItemId;
 
     return ColoredBox(
@@ -246,12 +290,31 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                         onRefresh: _refresh,
                         child: ListView.builder(
                           key: const Key('watchlist-list'),
+                          controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(
                             parent: BouncingScrollPhysics(),
                           ),
                           padding: const EdgeInsets.only(bottom: 16),
-                          itemCount: items.length,
+                          // 더 로드할 항목이 있으면 로딩 인디케이터용 +1
+                          itemCount: items.length + (hasMore ? 1 : 0),
                           itemBuilder: (context, index) {
+                            // 마지막 항목: 로딩 인디케이터
+                            if (index >= items.length) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.mainAndAccent.primary_ff8a00,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+
                             final item = items[index];
                             final isSelected = item.id == selectedItemId;
                             final detailState = detailUiState.detailFor(
